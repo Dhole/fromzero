@@ -11,6 +11,12 @@ struct Elem {
 	int end;
 };
 
+enum Type {
+	op = 0,
+	label = 1,
+	directive = 2,
+};
+
 int
 get_elems(char *line, struct Elem *elems)
 {
@@ -48,6 +54,18 @@ get_elems(char *line, struct Elem *elems)
 	return n;
 }
 
+enum Type
+get_elem_type(char *line, struct Elem elem)
+{
+	if (line[elem.begin] == '.') {
+		return directive;
+	} else if (line [elem.end-1] == ':') {
+		return label;
+	} else {
+		return op;
+	}
+}
+
 int
 main(int argc, char **argv)
 {
@@ -56,6 +74,7 @@ main(int argc, char **argv)
 	int linum = 0, colnum = 0, num_elems;
 	char line[MAX_COL+1];
 	struct Elem elems[MAX_ELEM];
+	enum Type elem_type;
 	source_file = fopen("test.asm", "r");
 	if (!source_file) {
 		return -1;
@@ -67,6 +86,14 @@ main(int argc, char **argv)
 			num_elems = get_elems(line, elems);
 			// DBG BEGIN
 			printf("%02d ", linum+1);
+			if (num_elems > 0) {
+				elem_type = get_elem_type(line, elems[0]);
+				switch (elem_type) {
+				case op: printf("OP "); break;
+				case label: printf("LABEL "); break;
+				case directive: printf("DIRECTIVE "); break;
+				}
+			}
 			for (int i = 0; i < num_elems; i++) {
 				printf("%d:", i);
 				for (int j = elems[i].begin; j < elems[i].end; j++) {
