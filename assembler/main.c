@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <errno.h>
 
 #define MAX_COL 100
 #define MAX_ELEM 8
@@ -34,7 +35,7 @@ get_elems(char *line, struct Elem *elems)
 			} else if (c == '\\') {
 				str_scape = TRUE;
 			}
-		} else if (c == ' ' || c == '\0' || c == ';') {
+		} else if (c == ' ' || c == '\t' || c == '\0' || c == ';') {
 			if (begin != -1) {
 				elems[n++] = (struct Elem){begin, i};
 				begin = -1;
@@ -77,6 +78,7 @@ main(int argc, char **argv)
 	enum Type elem_type;
 	source_file = fopen("test.asm", "r");
 	if (!source_file) {
+		fprintf(stderr, "ERR: Can't open test.asm, err = %d", errno);
 		return -1;
 	}
 	while ((c = getc(source_file)) != EOF) {
@@ -110,5 +112,10 @@ main(int argc, char **argv)
 			colnum += 1;
 		}
 	}
+	if (colnum != 0) {
+		fprintf(stderr, "ERR: Last line missing \\n");
+		return -1;
+	}
 	fclose(source_file);
+	return 0;
 }

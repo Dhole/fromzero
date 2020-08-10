@@ -6,7 +6,7 @@
 .org 0xf800
 start:
   ;mov.w #0x5a80, &WDTCTL
-  mov.w #WDTPW|WDTHOLD, &WDTCTL
+  mov.w	#WDTPW|WDTHOLD, &WDTCTL
   mov.b #0x41, &P1DIR
   mov.w #0x01, r8
 repeat:
@@ -26,3 +26,4 @@ waiter:
 
 ; AAAA BBBB CCCC DDDD EEEE FFFF GGGG HHHH IIII JJJJ KKKK LLLL MMMM NNNN OOOO PPPP QQQQ RRRR SSSS TTTT
 
+.ascii "FIN"
