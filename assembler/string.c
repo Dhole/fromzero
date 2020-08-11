@@ -38,24 +38,34 @@ string_resize(string_t *s, uint8_t new_capacity)
 		memcpy(s->data, old_data, (size_t) s->length);
 		free(old_data);
 	}
-	return 0;
+	return OK;
+}
+
+void
+string_init(string_t *s)
+{
+	s->data = NULL;
+	s->capacity = 0;
+	s->length = 0;
 }
 
 string_t *
 string_new()
 {
 	string_t *s;
-	s = calloc(1, sizeof(string_t));
+	s = malloc(sizeof(string_t));
+	if (s == NULL) {
+		return NULL;
+	}
+	string_init(s);
 	return s;
 }
 
 void
-string_free_data(string_t *s)
+string_free(string_t *s)
 {
-	if (!string_is_ref(s)) {
-		if (s->data != NULL) {
-			free(s->data);
-		}
+	if (s->capacity > 0) {
+		free(s->data);
 	}
 	s->data = NULL;
 	s->capacity = 0;
@@ -65,7 +75,10 @@ string_free_data(string_t *s)
 void
 string_delete(string_t *s)
 {
-	string_free_data(s);
+	if (s == NULL) {
+		return;
+	}
+	string_free(s);
 	free(s);
 }
 
@@ -76,19 +89,19 @@ string_set(string_t *s, char *src, uint8_t length)
 	if (string_is_ref(s)) {
 		return ERR_STRING_REF;
 	}
-	string_free_data(s);
+	string_free(s);
 	if (string_resize(s, length) != OK) {
 		return -1;
 	}
 	memcpy(s->data, src, (size_t) length);
 	s->length = length;
-	return 0;
+	return OK;
 }
 
 void
 string_set_ref(string_t *s, char *src, uint8_t length)
 {
-	string_free_data(s);
+	string_free(s);
 	s->data = src;
 	s->length = length;
 	s->capacity = 0;
@@ -104,11 +117,11 @@ main()
 	struct string_t *s;
 	char *src = "Hello world!";
 
-	s = string_new();
+	assert_not_null(s = string_new());
 	assert_equal(string_set(s, src, strlen(src)), OK);
 	string_delete(s);
 
-	s = string_new();
+	assert_not_null(s = string_new());
 	string_set_ref(s, src, strlen(src));
 	string_delete(s);
 }
