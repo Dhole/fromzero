@@ -171,6 +171,32 @@ vector_sort(vector_t *v, elem_cmp_fn_t elem_cmp_fn)
 	_vector_quicksort(v, elem_cmp_fn, 0, v->length - 1);
 }
 
+void *
+vector_bin_search(vector_t *v, elem_cmp_fn_t elem_cmp_fn, void *key)
+{
+	int lo = 0, hi = v->length - 1;
+	int p;
+	void *elem;
+	cmp_t cmp;
+	while (true) {
+		p = (lo + hi) / 2;
+		elem = vector_get(v, (size_t) p);
+		cmp = elem_cmp_fn(key, elem);
+		// printf("vector_bin_search: p=%d, lo=%d, hi=%d, cmp=%d\n", p, lo, hi, cmp);
+		if (cmp == EQUAL) {
+			return elem;
+		} else if (cmp == LESS) {
+			hi = p - 1;
+		} else if (cmp == GREATER) {
+			lo = p + 1;
+		}
+		// printf("lo=%d, hi=%d\n", lo, hi);
+		if (lo > hi) {
+			return NULL;
+		}
+	}
+}
+
 #ifdef TEST
 
 #include "assertion-macros.h"
@@ -252,7 +278,10 @@ main()
 	x = 2; assert_equal(vector_push(v, &x), OK);
 	x = 3; assert_equal(vector_push(v, &x), OK);
 
-	vector_sort(v, (cmp_t (*)(void *, void *)) cmp_int);
+	cmp_t (*cmp_sort)(void *, void *);
+	cmp_sort = (cmp_t (*)(void *, void *)) cmp_int;
+
+	vector_sort(v, cmp_sort);
 	x = * (int *) vector_get(v, 0); assert_equal(x, 1);
 	x = * (int *) vector_get(v, 1); assert_equal(x, 2);
 	x = * (int *) vector_get(v, 2); assert_equal(x, 3);
@@ -260,6 +289,19 @@ main()
 	x = * (int *) vector_get(v, 4); assert_equal(x, 4);
 	x = * (int *) vector_get(v, 5); assert_equal(x, 7);
 	x = * (int *) vector_get(v, 6); assert_equal(x, 8);
+
+	cmp_t (*cmp_search)(void *, void *);
+	cmp_search = (cmp_t (*)(void *, void *)) cmp_int;
+
+	// Test bin_search
+	int key;
+	int *y;
+	key = 1; y = (int *) vector_bin_search(v, cmp_search, &key); assert_not_null(y); assert_equal(*y, key);
+	key = 4; y = (int *) vector_bin_search(v, cmp_search, &key); assert_not_null(y); assert_equal(*y, key);
+	key = 8; y = (int *) vector_bin_search(v, cmp_search, &key); assert_not_null(y); assert_equal(*y, key);
+	key = 0; y = (int *) vector_bin_search(v, cmp_search, &key); assert_null(y);;
+	key = 6; y = (int *) vector_bin_search(v, cmp_search, &key); assert_null(y);;
+	key = 9; y = (int *) vector_bin_search(v, cmp_search, &key); assert_null(y);;
 
 	vector_delete(v);
 

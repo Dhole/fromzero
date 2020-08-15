@@ -1,4 +1,5 @@
-led-stm32.o
 led-stm32.bin
 led-stm32.elf
 led-stm32.lst
+led-stm32.o
+led-stm32.0.bin
