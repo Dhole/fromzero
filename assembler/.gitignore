@@ -1,3 +1,5 @@
 a.out
 test_*
 vgcore.*
+*.o
+main

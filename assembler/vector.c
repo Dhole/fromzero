@@ -6,39 +6,32 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "errors.h"
+#include "vector.h"
 
-typedef enum cmp_t {
-	LESS = -1, // A < B
-	EQUAL = 0, // A == B
-	GREATER = 1, // A > B
-} cmp_t;
+#include "error.h"
 
-typedef cmp_t (elem_cmp_fn_t)(void *, void *);
-
-typedef void (elem_free_fn_t)(void *);
-
-typedef struct vector_t {
-	void *data;
-	uint16_t length;
-	uint16_t capacity;
-	uint16_t elem_size;
-	elem_free_fn_t *elem_free_fn;
-} vector_t;
+error_t
+vector_init(vector_t *v, size_t elem_size, uint16_t init_capacity, elem_free_fn_t *elem_free_fn)
+{
+	v->data = malloc((size_t) init_capacity * elem_size);
+	if (v->data == NULL && init_capacity > 0) {
+		return ERR_NO_MEM;
+	}
+	v->elem_size = (uint16_t) elem_size;
+	v->length = 0;
+	v->capacity = init_capacity;
+	v->elem_free_fn = elem_free_fn;
+	return OK;
+}
 
 vector_t *
 vector_new(size_t elem_size, uint16_t init_capacity, elem_free_fn_t *elem_free_fn)
 {
 	vector_t *v;
 	v = calloc(1, sizeof(vector_t));
-	v->data = malloc((size_t) init_capacity * elem_size);
-	if (v->data == NULL && init_capacity > 0) {
+	if (vector_init(v, elem_size, init_capacity, elem_free_fn) != OK) {
 		return NULL;
 	}
-	v->elem_size = (uint16_t) elem_size;
-	v->length = 0;
-	v->capacity = init_capacity;
-	v->elem_free_fn = elem_free_fn;
 	return v;
 }
 
@@ -69,7 +62,7 @@ vector_get(vector_t *v, size_t index)
 }
 
 void
-vector_free(vector_t *v)
+vector_clear(vector_t *v)
 {
 	int i;
 	if (v->elem_free_fn != NULL) {
@@ -77,6 +70,13 @@ vector_free(vector_t *v)
 			v->elem_free_fn(vector_get(v, i));
 		}
 	}
+	v->length = 0;
+}
+
+void
+vector_free(vector_t *v)
+{
+	vector_clear(v);
 	if (v->capacity > 0) {
 		free(v->data);
 	}
@@ -238,7 +238,7 @@ cmp_int(int *a, int *b)
 int
 main()
 {
-	struct vector_t *v;
+	vector_t *v;
 	int x;
 	int i;
 

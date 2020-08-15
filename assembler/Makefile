@@ -1,6 +1,7 @@
 CC=gcc
-CFLAGS=-Wall
+CFLAGS=-Wall -g
 TEST_CFLAGS=-DTEST=1 -g
+OBJ = error.o string.o vector.o
 
 test: test_vector test_string
 	./test_vector
@@ -15,3 +16,15 @@ test_vector: vector.c
 
 test_string: string.c
 	$(CC) -o $@ $< $(CFLAGS) $(TEST_CFLAGS)
+
+%.o: %.c
+	$(CC) -c -o $@ $< $(CFLAGS)
+
+main: $(OBJ) main.c
+	$(CC) -o $@ $^ $(CFLAGS)
+
+main_valgrind: main
+	valgrind -q ./main
+
+clean:
+	rm *.o test_* main

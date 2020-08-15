@@ -4,47 +4,14 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "errors.h"
+#include "string.h"
 
-typedef struct string_t {
-	char *data;
-	uint8_t length;
-	uint8_t capacity;
-} string_t;
-
-bool
-string_is_ref(string_t *s)
-{
-	return s->length > 0 && s->capacity == 0;
-}
-
-error_t
-string_resize(string_t *s, uint8_t new_capacity)
-{
-	if (string_is_ref(s)) {
-		return ERR_STRING_REF;
-	}
-	char *old_data = s->data;
-	s->data = malloc((size_t) new_capacity);
-	if (s->data == NULL) {
-		return ERR_NO_MEM;
-	}
-	s->capacity = new_capacity;
-	if (s->length > 0) {
-		if (new_capacity < s->length) {
-			s->length = new_capacity;
-		}
-		memcpy(s->data, old_data, (size_t) s->length);
-		free(old_data);
-	}
-	return OK;
-}
+#include "error.h"
 
 void
 string_init(string_t *s)
 {
 	s->data = NULL;
-	s->capacity = 0;
 	s->length = 0;
 }
 
@@ -63,11 +30,10 @@ string_new()
 void
 string_free(string_t *s)
 {
-	if (s->capacity > 0) {
+	if (s->data != NULL) {
 		free(s->data);
+		s->data = NULL;
 	}
-	s->data = NULL;
-	s->capacity = 0;
 	s->length = 0;
 }
 
@@ -85,25 +51,13 @@ string_delete(string_t *s)
 error_t
 string_set(string_t *s, char *src, uint8_t length)
 {
-	if (string_is_ref(s)) {
-		return ERR_STRING_REF;
-	}
-	string_free(s);
-	if (string_resize(s, length) != OK) {
+	s->data = malloc((size_t) length);
+	if (s->data == NULL) {
 		return ERR_NO_MEM;
 	}
 	memcpy(s->data, src, (size_t) length);
 	s->length = length;
 	return OK;
-}
-
-void
-string_set_ref(string_t *s, char *src, uint8_t length)
-{
-	string_free(s);
-	s->data = src;
-	s->length = length;
-	s->capacity = 0;
 }
 
 #ifdef TEST
@@ -118,10 +72,6 @@ main()
 
 	assert_not_null(s = string_new());
 	assert_equal(string_set(s, src, strlen(src)), OK);
-	string_delete(s);
-
-	assert_not_null(s = string_new());
-	string_set_ref(s, src, strlen(src));
 	string_delete(s);
 }
 #endif
