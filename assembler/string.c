@@ -4,8 +4,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#define OK 0
-#define ERR_STRING_REF -2
+#include "errors.h"
 
 typedef struct string_t {
 	char *data;
@@ -19,7 +18,7 @@ string_is_ref(string_t *s)
 	return s->length > 0 && s->capacity == 0;
 }
 
-int
+error_t
 string_resize(string_t *s, uint8_t new_capacity)
 {
 	if (string_is_ref(s)) {
@@ -28,7 +27,7 @@ string_resize(string_t *s, uint8_t new_capacity)
 	char *old_data = s->data;
 	s->data = malloc((size_t) new_capacity);
 	if (s->data == NULL) {
-		return -1;
+		return ERR_NO_MEM;
 	}
 	s->capacity = new_capacity;
 	if (s->length > 0) {
@@ -83,7 +82,7 @@ string_delete(string_t *s)
 }
 
 
-int
+error_t
 string_set(string_t *s, char *src, uint8_t length)
 {
 	if (string_is_ref(s)) {
@@ -91,7 +90,7 @@ string_set(string_t *s, char *src, uint8_t length)
 	}
 	string_free(s);
 	if (string_resize(s, length) != OK) {
-		return -1;
+		return ERR_NO_MEM;
 	}
 	memcpy(s->data, src, (size_t) length);
 	s->length = length;
