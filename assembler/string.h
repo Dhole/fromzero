@@ -14,5 +14,6 @@ string_t *string_new();
 void string_free(string_t *s);
 void string_delete(string_t *s);
 error_t string_set(string_t *s, char *src, uint8_t length);
+void string_set_ref(string_t *s, char *src, uint8_t length);
 
 #endif // STRING_H

@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <assert.h>
 
 #include "string.h"
 #include "vector.h"
@@ -15,10 +16,10 @@ enum type {
 	directive = 2,
 };
 
-int
-get_elems(char *line, vector_t *elems)
+void
+get_elems(vector_t *elems, char *line)
 {
-	int n = 0, begin = -1, in_str = false, str_scape = false, i;
+	int begin = -1, in_str = false, str_scape = false, i;
 	char c;
 	string_t elem;
 	string_init(&elem);
@@ -36,14 +37,15 @@ get_elems(char *line, vector_t *elems)
 			}
 		} else if (c == ' ' || c == '\t' || c == '\0' || c == ';') {
 			if (begin != -1) {
-				string_set(&elem, &line[begin], i - begin);
+				string_set_ref(&elem, &line[begin], i - begin);
+				assert(elem.length != 0);
 				vector_push(elems, &elem);
 				begin = -1;
 			}
-			if (c == '\0' || c == ';' || n == MAX_ELEM) {
+			if (c == '\0' || c == ';' || elems->length == MAX_ELEM) {
 				break;
 			}
-		} else {
+		} else { // token character
 			if (begin == -1) {
 				begin = i;
 				if (c == '"') {
@@ -52,7 +54,6 @@ get_elems(char *line, vector_t *elems)
 			}
 		}
 	}
-	return n;
 }
 
 enum type
@@ -74,12 +75,11 @@ main(int argc, char **argv)
 	int c;
 	int linum = 0, colnum = 0;
 	char line[MAX_COL+1];
-	// struct Elem elems[MAX_ELEM];
 
-	vector_t *elems;
-	elems = vector_new(sizeof(string_t), 0, (void (*)(void *)) string_free);
-	if (elems == NULL) {
-		fprintf(stderr, "out of bounds\n");
+	vector_t elems;
+	// elems = vector_new(sizeof(string_t), 0, (void (*)(void *)) string_free);
+	if (vector_init(&elems, sizeof(string_t), 0, NULL) != OK) {
+		fprintf(stderr, "ERR: Out of memory\n");
 		return -1;
 	}
 
@@ -94,20 +94,20 @@ main(int argc, char **argv)
 		if (c == '\n') {
 			line[colnum] = '\0';
 			// printf("%02d: %s\n", linum+1, line);
-			get_elems(line, elems);
+			get_elems(&elems, line);
 			// DBG BEGIN
 			printf("%02d ", linum+1);
-			if (elems->length > 0) {
-				elem_type = get_elem_type(vector_get(elems, 0));
+			if (elems.length > 0) {
+				elem_type = get_elem_type(vector_get(&elems, 0));
 				switch (elem_type) {
 				case op: printf("OP "); break;
 				case label: printf("LABEL "); break;
 				case directive: printf("DIRECTIVE "); break;
 				}
 			}
-			for (int i = 0; i < elems->length; i++) {
+			for (int i = 0; i < elems.length; i++) {
 				printf("%d:", i);
-				elem = vector_get(elems, i);
+				elem = vector_get(&elems, i);
 				for (int j = 0; j < elem->length; j++) {
 					printf("%c", elem->data[j]);
 				}
@@ -117,7 +117,7 @@ main(int argc, char **argv)
 			// DBG END
 			colnum = 0;
 			linum += 1;
-			vector_clear(elems);
+			vector_clear(&elems);
 		} else if (colnum < MAX_COL) {
 			line[colnum] = (char) c;
 			colnum += 1;
@@ -127,7 +127,7 @@ main(int argc, char **argv)
 		fprintf(stderr, "ERR: Last line missing \n");
 		return -1;
 	}
-	vector_delete(elems);
+	vector_free(&elems);
 	fclose(source_file);
 	return 0;
 }

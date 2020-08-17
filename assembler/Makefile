@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-Wall -g
+CFLAGS=-Wall -g -std=c99
 TEST_CFLAGS=-DTEST=1 -g
 OBJ = error.o string.o vector.o
 

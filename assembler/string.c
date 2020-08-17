@@ -60,6 +60,13 @@ string_set(string_t *s, char *src, uint8_t length)
 	return OK;
 }
 
+void
+string_set_ref(string_t *s, char *src, uint8_t length)
+{
+	s->data = src;
+	s->length = length;
+}
+
 #ifdef TEST
 
 #include "assertion-macros.h"
