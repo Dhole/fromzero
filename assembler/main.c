@@ -11,10 +11,22 @@
 #define MAX_ELEM 8
 
 enum type {
-	op = 0,
-	label = 1,
-	directive = 2,
+	NONE = 0,
+	OP = 1,
+	DIRECTIVE = 2,
+	LABEL = 3,
 };
+
+typedef struct {
+	string_t label;
+	size_t addr;
+} symbol_t;
+
+void
+symbol_free(symbol_t *s)
+{
+	string_free(&s->label);
+}
 
 void
 get_elems(vector_t *elems, char *line)
@@ -37,7 +49,7 @@ get_elems(vector_t *elems, char *line)
 			}
 		} else if (c == ' ' || c == '\t' || c == '\0' || c == ';') {
 			if (begin != -1) {
-				string_set_ref(&elem, &line[begin], i - begin);
+				string_set_ref_s(&elem, &line[begin], i - begin);
 				assert(elem.length != 0);
 				vector_push(elems, &elem);
 				begin = -1;
@@ -60,64 +72,122 @@ enum type
 get_elem_type(string_t *elem)
 {
 	if (elem->data[0] == '.') {
-		return directive;
+		return DIRECTIVE;
 	} else if (elem->data[elem->length - 1] == ':') {
-		return label;
+		return LABEL;
 	} else {
-		return op;
+		return OP;
+	}
+}
+
+typedef struct {
+	string_t label;
+	enum type type;
+	vector_t elems;
+} line_t;
+
+void
+parse_line(line_t *parsed, char *line)
+{
+	get_elems(&parsed->elems, line);
+	parsed->label.length = 0;
+	if (parsed->elems.length == 0) {
+		parsed->type = NONE;
+		return;
+	}
+	enum type elem0_type;
+	string_t *elem0;
+	elem0 = vector_get(&parsed->elems, 0);
+	elem0_type = get_elem_type(elem0);
+	if (elem0_type == LABEL) {
+		elem0->length--; // Remove ':' suffix
+		parsed->label = *elem0;
+		// TODO: pop_front
+		return;
+	}
+	if (elem0_type == OP) {
+		parsed->type = OP;
+		return;
+	} else if (elem0_type == DIRECTIVE) {
+		parsed->type = DIRECTIVE;
+		elem0->data++; // Remove '.' prefix
+		return;
 	}
 }
 
 int
 main(int argc, char **argv)
 {
-	FILE *source_file;
+	FILE *source_file = NULL;
 	int c;
 	int linum = 0, colnum = 0;
 	char line[MAX_COL+1];
+	int err = 0;
 
-	vector_t elems;
-	// elems = vector_new(sizeof(string_t), 0, (void (*)(void *)) string_free);
-	if (vector_init(&elems, sizeof(string_t), 0, NULL) != OK) {
+	line_t parsed_line;
+	if (vector_init(&parsed_line.elems, sizeof(string_t), 0, NULL) != OK) {
 		fprintf(stderr, "ERR: Out of memory\n");
-		return -1;
+		err = -1;
+		goto cleanup;
 	}
 
-	enum type elem_type;
+	vector_t sym_table;
+	if (vector_init(&sym_table, sizeof(symbol_t), 0, (void (*)(void *)) symbol_free) != OK) {
+		fprintf(stderr, "ERR: Out of memory\n");
+		err = -1;
+		goto cleanup;
+	}
+
+	// enum type elem_type;
 	source_file = fopen("test.asm", "r");
 	if (!source_file) {
 		fprintf(stderr, "ERR: Can't open test.asm, err = %d\n", errno);
-		return -1;
+		err = -1;
+		goto cleanup;
 	}
-	string_t *elem;
+
+	// string_t *elem;
+	symbol_t symbol;
+	// string_t *first_elem;
+	size_t addr = 0;
+	string_t label;
+	string_init(&label);
 	while ((c = getc(source_file)) != EOF) {
 		if (c == '\n') {
 			line[colnum] = '\0';
 			// printf("%02d: %s\n", linum+1, line);
-			get_elems(&elems, line);
+			parse_line(&parsed_line, line);
+			if (parsed_line.label.length > 0) {
+				string_set(&symbol.label, &parsed_line.label);
+				symbol.addr = addr;
+				vector_push(&sym_table, &symbol);
+			}
+			if (parsed_line.type == OP) {
+				addr += 2;
+			}
 			// DBG BEGIN
-			printf("%02d ", linum+1);
-			if (elems.length > 0) {
-				elem_type = get_elem_type(vector_get(&elems, 0));
-				switch (elem_type) {
-				case op: printf("OP "); break;
-				case label: printf("LABEL "); break;
-				case directive: printf("DIRECTIVE "); break;
-				}
-			}
-			for (int i = 0; i < elems.length; i++) {
-				printf("%d:", i);
-				elem = vector_get(&elems, i);
-				for (int j = 0; j < elem->length; j++) {
-					printf("%c", elem->data[j]);
-				}
-				printf(" ");
-			}
-			printf("\n");
+			// printf("%02d ", linum+1);
+			// if (line_elems.length > 0) {
+			// 	elem_type = get_elem_type(vector_get(&line_elems, 0));
+			// 	switch (elem_type) {
+			// 	case OP: printf("OP "); break;
+			// 	case LABEL: printf("LABEL "); break;
+			// 	case DIRECTIVE: printf("DIRECTIVE "); break;
+			// 	}
+			// }
+			// for (int i = 0; i < line_elems.length; i++) {
+			// 	printf("%d:", i);
+			// 	elem = vector_get(&line_elems, i);
+			// 	for (int j = 0; j < elem->length; j++) {
+			// 		printf("%c", elem->data[j]);
+			// 	}
+			// 	printf(" ");
+			// }
+			// printf("\n");
 			// DBG END
 			colnum = 0;
 			linum += 1;
-			vector_clear(&elems);
+			vector_clear(&parsed_line.elems);
 		} else if (colnum < MAX_COL) {
 			line[colnum] = (char) c;
 			colnum += 1;
@@ -127,7 +197,24 @@ main(int argc, char **argv)
 		fprintf(stderr, "ERR: Last line missing \n");
 		return -1;
 	}
-	vector_free(&elems);
-	fclose(source_file);
-	return 0;
+	// DBG BEGIN
+	symbol_t *sym_ref;
+	printf("\n---\n\n");
+	int i;
+	for (i = 0; i < sym_table.length; i++) {
+		sym_ref = vector_get(&sym_table, i);
+		printf("%d: [%ld] ", i, sym_ref->addr);
+		for (int j = 0; j < sym_ref->label.length; j++) {
+			printf("%c", sym_ref->label.data[j]);
+		}
+		printf("\n");
+	}
+	// DBG END
+cleanup:
+	vector_free(&parsed_line.elems);
+	vector_free(&sym_table);
+	if (source_file != NULL) {
+		fclose(source_file);
+	}
+	return err;
 }

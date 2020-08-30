@@ -61,6 +61,15 @@ vector_get(vector_t *v, size_t index)
 	return v->data + v->elem_size * index;
 }
 
+void *
+vector_pop_front(vector_t *v)
+{
+	if (v->length == 0) {
+		return NULL;
+	}
+	// TODO
+}
+
 void
 vector_clear(vector_t *v)
 {
@@ -79,6 +88,7 @@ vector_free(vector_t *v)
 	vector_clear(v);
 	if (v->capacity > 0) {
 		free(v->data);
+		v->capacity = 0;
 	}
 }
 

@@ -48,9 +48,8 @@ string_delete(string_t *s)
 	free(s);
 }
 
-
 error_t
-string_set(string_t *s, char *src, uint8_t length)
+string_set_s(string_t *s, char *src, uint8_t length)
 {
 	s->data = malloc((size_t) length);
 	if (s->data == NULL) {
@@ -61,11 +60,23 @@ string_set(string_t *s, char *src, uint8_t length)
 	return OK;
 }
 
+error_t
+string_set(string_t *s, string_t *src)
+{
+	return string_set_s(s, src->data, src->length);
+}
+
 void
-string_set_ref(string_t *s, char *src, uint8_t length)
+string_set_ref_s(string_t *s, char *src, uint8_t length)
 {
 	s->data = src;
 	s->length = length;
+}
+
+void
+string_set_ref(string_t *s, string_t *src)
+{
+	return string_set_ref_s(s, src->data, src->length);
 }
 
 void
@@ -116,7 +127,7 @@ main()
 	char *src = "Hello world!";
 
 	assert_not_null(s = string_new());
-	assert_equal(string_set(s, src, strlen(src)), OK);
+	assert_equal(string_set_s(s, src, strlen(src)), OK);
 	string_delete(s);
 
 	string_t s1;
