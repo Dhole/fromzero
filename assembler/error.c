@@ -5,4 +5,5 @@ const char *error_string[] = {
     "out of bounds", // 3
     "unable to decode number", // 4
     "number too long", // 5
+    "empty", // 6
 };

@@ -6,6 +6,7 @@
 #include <assert.h>
 
 #include "string.h"
+#include "vector.h"
 
 #include "error.h"
 
@@ -114,6 +115,30 @@ string_has_prefix(string_t *s, char *prefix)
 		return true;
 	}
 	return false;
+}
+
+// lexicographical comparison following ASCII position of each character
+cmp_t
+string_cmp(string_t *a, string_t *b)
+{
+	int i;
+	char char_a, char_b;
+	for (i = 0; i < a->length && i < b->length; i++) {
+		char_a = a->data[i];
+		char_b = b->data[i];
+		if (char_a < char_b) {
+			return LESS;
+		} else if (char_a > char_b) {
+			return GREATER;
+		}
+	}
+	if (a->length < b->length) {
+		return LESS;
+	} else if (a->length == b->length) {
+		return EQUAL;
+	} else {
+		return GREATER;
+	}
 }
 
 #ifdef TEST

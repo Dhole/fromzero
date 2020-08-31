@@ -8,6 +8,7 @@ typedef enum error_t {
     ERR_OUT_OF_BOUNDS = 3,
     ERR_NUM_DEC = 4,
     ERR_NUM_LONG = 5,
+    ERR_EMPTY = 6,
 } error_t;
 
 extern const char *error_string[];

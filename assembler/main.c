@@ -10,11 +10,16 @@
 #define MAX_COL 100
 #define MAX_ELEM 8
 
-enum type {
-	NONE = 0,
-	OP = 1,
-	DIRECTIVE = 2,
-	LABEL = 3,
+enum elem_type {
+	ELEM_OP = 1,
+	ELEM_DIRECTIVE = 2,
+	ELEM_LABEL = 3,
+};
+
+enum line_type {
+	LINE_NONE = 0,
+	LINE_OP = 1,
+	LINE_DIRECTIVE = 2,
 };
 
 typedef struct {
@@ -28,12 +33,19 @@ symbol_free(symbol_t *s)
 	string_free(&s->label);
 }
 
+cmp_t
+symbol_cmp(symbol_t *a, symbol_t *b)
+{
+	return string_cmp(&a->label, &b->label);
+}
+
 void
 get_elems(vector_t *elems, char *line)
 {
 	int begin = -1, in_str = false, str_scape = false, i;
 	char c;
 	string_t elem;
+
 	string_init(&elem);
 	for (i = 0; i < MAX_COL; i++) {
 		c = line[i];
@@ -68,48 +80,57 @@ get_elems(vector_t *elems, char *line)
 	}
 }
 
-enum type
+enum elem_type
 get_elem_type(string_t *elem)
 {
 	if (elem->data[0] == '.') {
-		return DIRECTIVE;
+		return ELEM_DIRECTIVE;
 	} else if (elem->data[elem->length - 1] == ':') {
-		return LABEL;
+		return ELEM_LABEL;
 	} else {
-		return OP;
+		return ELEM_OP;
 	}
 }
 
 typedef struct {
 	string_t label;
-	enum type type;
+	enum line_type type;
 	vector_t elems;
 } line_t;
 
 void
 parse_line(line_t *parsed, char *line)
 {
+	enum elem_type elem0_type;
+	string_t *elem0;
+
 	get_elems(&parsed->elems, line);
 	parsed->label.length = 0;
 	if (parsed->elems.length == 0) {
-		parsed->type = NONE;
+		parsed->type = LINE_NONE;
 		return;
 	}
-	enum type elem0_type;
-	string_t *elem0;
+
 	elem0 = vector_get(&parsed->elems, 0);
 	elem0_type = get_elem_type(elem0);
-	if (elem0_type == LABEL) {
+	if (elem0_type == ELEM_LABEL) {
 		elem0->length--; // Remove ':' suffix
 		parsed->label = *elem0;
-		// TODO: pop_front
-		return;
+		vector_pop_front(&parsed->elems, NULL);
+
+		if (parsed->elems.length == 0) {
+			parsed->type = LINE_NONE;
+			return;
+		}
+		elem0 = vector_get(&parsed->elems, 0);
+		elem0_type = get_elem_type(elem0);
 	}
-	if (elem0_type == OP) {
-		parsed->type = OP;
+
+	if (elem0_type == ELEM_OP) {
+		parsed->type = LINE_OP;
 		return;
-	} else if (elem0_type == DIRECTIVE) {
-		parsed->type = DIRECTIVE;
+	} else if (elem0_type == ELEM_DIRECTIVE) {
+		parsed->type = LINE_DIRECTIVE;
 		elem0->data++; // Remove '.' prefix
 		return;
 	}
@@ -146,11 +167,10 @@ main(int argc, char **argv)
 		goto cleanup;
 	}
 
-	// string_t *elem;
 	symbol_t symbol;
-	// string_t *first_elem;
 	size_t addr = 0;
 	string_t label;
+
 	string_init(&label);
 	while ((c = getc(source_file)) != EOF) {
 		if (c == '\n') {
@@ -162,7 +182,7 @@ main(int argc, char **argv)
 				symbol.addr = addr;
 				vector_push(&sym_table, &symbol);
 			}
-			if (parsed_line.type == OP) {
+			if (parsed_line.type == LINE_OP) {
 				addr += 2;
 			}
 			// DBG BEGIN
@@ -210,6 +230,8 @@ main(int argc, char **argv)
 		printf("\n");
 	}
 	// DBG END
+	vector_sort(&sym_table, (cmp_t (*)(void *, void *)) symbol_cmp);
+	// TODO: Find repetitions in the symbol table
 cleanup:
 	vector_free(&parsed_line.elems);
 	vector_free(&sym_table);

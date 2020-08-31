@@ -31,6 +31,7 @@ void vector_clear(vector_t *v);
 void vector_free(vector_t *v);
 void vector_delete(vector_t *v);
 error_t vector_push(vector_t *v, void *elem);
+error_t vector_pop_front(vector_t *v, void *elem);
 void vector_swap(vector_t *v, size_t index_a, size_t index_b);
 void vector_sort(vector_t *v, elem_cmp_fn_t elem_cmp_fn);
 void * vector_bin_search(vector_t *v, elem_cmp_fn_t elem_cmp_fn, void *key);

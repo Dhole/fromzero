@@ -61,13 +61,23 @@ vector_get(vector_t *v, size_t index)
 	return v->data + v->elem_size * index;
 }
 
-void *
-vector_pop_front(vector_t *v)
+error_t
+vector_pop_front(vector_t *v, void *elem)
 {
+	int i;
 	if (v->length == 0) {
-		return NULL;
+		return ERR_EMPTY;
 	}
-	// TODO
+	if (elem != NULL) {
+		memcpy(elem, v->data, v->elem_size);
+	} else if (v->elem_free_fn != NULL) {
+		v->elem_free_fn(v->data);
+	}
+	for (i = 1; i < v->length; i++) {
+		memcpy(v->data + v->elem_size * (i - 1), v->data + v->elem_size * i, v->elem_size);
+	}
+	v->length--;
+	return OK;
 }
 
 void
@@ -234,7 +244,7 @@ foo_free(foo_t *f)
 }
 
 cmp_t
-cmp_int(int *a, int *b)
+int_cmp(int *a, int *b)
 {
 	if (*a < *b) {
 		return LESS;
@@ -273,6 +283,10 @@ main()
 	assert_equal(x, 3);
 	x = * (int *) vector_get(v, 3);
 	assert_equal(x, 2);
+	// Test pop_front
+	assert_equal(vector_pop_front(v, &x), OK);
+	assert_equal(x, 0);
+	assert_equal(v->length, 9);
 	// Test delete
 	vector_delete(v);
 
@@ -288,10 +302,10 @@ main()
 	x = 2; assert_equal(vector_push(v, &x), OK);
 	x = 3; assert_equal(vector_push(v, &x), OK);
 
-	cmp_t (*cmp_sort)(void *, void *);
-	cmp_sort = (cmp_t (*)(void *, void *)) cmp_int;
+	cmp_t (*sort_cmp)(void *, void *);
+	sort_cmp = (cmp_t (*)(void *, void *)) int_cmp;
 
-	vector_sort(v, cmp_sort);
+	vector_sort(v, sort_cmp);
 	x = * (int *) vector_get(v, 0); assert_equal(x, 1);
 	x = * (int *) vector_get(v, 1); assert_equal(x, 2);
 	x = * (int *) vector_get(v, 2); assert_equal(x, 3);
@@ -300,18 +314,18 @@ main()
 	x = * (int *) vector_get(v, 5); assert_equal(x, 7);
 	x = * (int *) vector_get(v, 6); assert_equal(x, 8);
 
-	cmp_t (*cmp_search)(void *, void *);
-	cmp_search = (cmp_t (*)(void *, void *)) cmp_int;
+	cmp_t (*search_cmp)(void *, void *);
+	search_cmp = (cmp_t (*)(void *, void *)) int_cmp;
 
 	// Test bin_search
 	int key;
 	int *y;
-	key = 1; y = (int *) vector_bin_search(v, cmp_search, &key); assert_not_null(y); assert_equal(*y, key);
-	key = 4; y = (int *) vector_bin_search(v, cmp_search, &key); assert_not_null(y); assert_equal(*y, key);
-	key = 8; y = (int *) vector_bin_search(v, cmp_search, &key); assert_not_null(y); assert_equal(*y, key);
-	key = 0; y = (int *) vector_bin_search(v, cmp_search, &key); assert_null(y);;
-	key = 6; y = (int *) vector_bin_search(v, cmp_search, &key); assert_null(y);;
-	key = 9; y = (int *) vector_bin_search(v, cmp_search, &key); assert_null(y);;
+	key = 1; y = (int *) vector_bin_search(v, search_cmp, &key); assert_not_null(y); assert_equal(*y, key);
+	key = 4; y = (int *) vector_bin_search(v, search_cmp, &key); assert_not_null(y); assert_equal(*y, key);
+	key = 8; y = (int *) vector_bin_search(v, search_cmp, &key); assert_not_null(y); assert_equal(*y, key);
+	key = 0; y = (int *) vector_bin_search(v, search_cmp, &key); assert_null(y);;
+	key = 6; y = (int *) vector_bin_search(v, search_cmp, &key); assert_null(y);;
+	key = 9; y = (int *) vector_bin_search(v, search_cmp, &key); assert_null(y);;
 
 	vector_delete(v);
 

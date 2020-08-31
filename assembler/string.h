@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "error.h"
+#include "vector.h"
 
 typedef struct {
 	char *data;
@@ -21,5 +22,7 @@ void string_set_ref_s(string_t *s, char *src, uint8_t length);
 void string_set_ref_c(string_t *s, char *src);
 bool string_has_prefix(string_t *s, char *prefix);
 void string_slice(string_t *src, string_t *dst, uint8_t begin, uint8_t end);
+// lexicographical comparison following ASCII position of each character
+cmp_t string_cmp(string_t *a, string_t *b);
 
 #endif // STRING_H
