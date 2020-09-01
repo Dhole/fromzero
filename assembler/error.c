@@ -6,4 +6,5 @@ const char *error_string[] = {
     "unable to decode number", // 4
     "number too long", // 5
     "empty", // 6
+    "write", // 7
 };

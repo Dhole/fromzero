@@ -24,5 +24,6 @@ bool string_has_prefix(string_t *s, char *prefix);
 void string_slice(string_t *src, string_t *dst, uint8_t begin, uint8_t end);
 // lexicographical comparison following ASCII position of each character
 cmp_t string_cmp(string_t *a, string_t *b);
+error_t string_write(string_t *s, FILE *stream);
 
 #endif // STRING_H

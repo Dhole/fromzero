@@ -232,6 +232,20 @@ main(int argc, char **argv)
 	// DBG END
 	vector_sort(&sym_table, (cmp_t (*)(void *, void *)) symbol_cmp);
 	// TODO: Find repetitions in the symbol table
+	string_t *prev_label = NULL;
+	for (i = 0; i < sym_table.length; i++) {
+		sym_ref = vector_get(&sym_table, i);
+		if (prev_label != NULL) {
+			if (string_cmp(prev_label, &sym_ref->label) == EQUAL) {
+				fprintf(stderr, "ERR: Repeated label: ");
+				string_write(prev_label, stderr);
+				fprintf(stderr, "\n");
+				err = -1;
+				goto cleanup;
+			}
+		}
+		prev_label = &sym_ref->label;
+	}
 cleanup:
 	vector_free(&parsed_line.elems);
 	vector_free(&sym_table);

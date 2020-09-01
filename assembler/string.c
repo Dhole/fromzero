@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <assert.h>
+#include <stdio.h>
 
 #include "string.h"
 #include "vector.h"
@@ -139,6 +140,22 @@ string_cmp(string_t *a, string_t *b)
 	} else {
 		return GREATER;
 	}
+}
+
+error_t
+string_write(string_t *s, FILE *stream)
+{
+	size_t res;
+	int rem = s->length;
+
+	while (rem > 0) {
+		res = fwrite(s->data + s->length - rem, 1, rem, stream);
+		if (res == -1) {
+			return ERR_WRITE;
+		}
+		rem -= res;
+	}
+	return OK;
 }
 
 #ifdef TEST
