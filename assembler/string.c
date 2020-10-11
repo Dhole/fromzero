@@ -100,6 +100,19 @@ string_slice(string_t *src, string_t *dst, uint8_t begin, uint8_t end)
 	dst->length = end - begin;
 }
 
+void
+string_lower(string_t *s)
+{
+	int i;
+	char *c;
+	for (i = 0; i < s->length; i++) {
+		c = &(s->data[i]);
+		if (*c >= 'A' && *c <= 'Z') {
+			*c += ('a' - 'A');
+		}
+	}
+}
+
 bool
 string_has_prefix(string_t *s, char *prefix)
 {
@@ -140,6 +153,15 @@ string_cmp(string_t *a, string_t *b)
 	} else {
 		return GREATER;
 	}
+}
+
+cmp_t
+string_cmp_c(string_t *a, char *_b)
+{
+	string_t b;
+	b.data = _b;
+	b.length = strlen(_b);
+	return string_cmp(a, &b);
 }
 
 error_t

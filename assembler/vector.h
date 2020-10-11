@@ -2,6 +2,7 @@
 #define VECTOR_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 #include "error.h"
 

@@ -188,6 +188,9 @@ _vector_quicksort(vector_t *v, elem_cmp_fn_t cmp_fn, size_t lo, size_t hi)
 void
 vector_sort(vector_t *v, elem_cmp_fn_t elem_cmp_fn)
 {
+	if (v->length == 0) {
+		return;
+	}
 	_vector_quicksort(v, elem_cmp_fn, 0, v->length - 1);
 }
 

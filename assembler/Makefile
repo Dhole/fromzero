@@ -1,7 +1,7 @@
 CC=gcc
 CFLAGS=-Wall -g -std=c99
 TEST_CFLAGS=-DTEST=1 -g
-OBJ=error.o string.o vector.o number.o
+OBJ=error.o string.o vector.o number.o instructions.o
 VALGRIND_OPTS=--leak-check=full -q
 
 test: test_vector test_string test_number
