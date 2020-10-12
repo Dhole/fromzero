@@ -4,6 +4,7 @@
 #include <assert.h>
 
 #include "instructions.h"
+#include "number.h"
 #include "string.h"
 #include "vector.h"
 #include "error.h"
@@ -40,11 +41,72 @@ symbol_cmp(symbol_t *a, symbol_t *b)
 	return string_cmp(&a->label, &b->label);
 }
 
+bool
+is_whitespace(char c)
+{
+	if (c == ' ' || c == '\t') {
+		return true;
+	}
+	return false;
+}
+
+#define MAX_TOKENS 16
+
+void
+get_tokens(char *line, vector_t tokens)
+{
+	int begin = -1, in_str = false, str_scape = false, i;
+	char c;
+	string_t token;
+	string_init(&token);
+
+	for (i = 0; i < MAX_COL; i++) {
+		c = line[i];
+		if (in_str) {
+			if (c == '\0') {
+				break;
+			} else if (str_scape) {
+				str_scape = false;
+			} else if (c == '"') {
+				in_str = false;
+			} else if (c == '\\') {
+				str_scape = true;
+			}
+		} else if (is_whitespace(c) || c == '\0' || c == ';') {
+			if (begin != -1) {
+				string_set_ref_s(&token, &line[begin], i - begin);
+				assert(token.length != 0);
+				vector_push(tokens, &token);
+				begin = -1;
+			}
+			if (c == '\0' || c == ';' || tokens->length == MAX_ELEM) {
+				break;
+			}
+		} else { // token character
+			if (begin == -1) {
+				begin = i;
+				if (c == '"') {
+					in_str = true;
+					continue;
+				}
+			}
+		}
+	}
+
+}
+
+// TODO: LINE = [LABEL:] [.DIRECTIVE | INST] [EXPR COMMA]*
+//       EXPR = [REGISTER | IMM | '[' [EXPR COMMA]* ']']
+//       REGISTER = 'r'[0-9]+
+//       IMM = [LITERAL | SYMBOL]
+//       LITERAL = [0-9].*
+//       SYMBOL = [a-Z].*
 void
 get_elems(vector_t *elems, char *line)
 {
 	int begin = -1, in_str = false, str_scape = false, i;
 	char c;
+	char sep = ' ';
 	string_t elem;
 
 	string_init(&elem);
@@ -60,7 +122,7 @@ get_elems(vector_t *elems, char *line)
 			} else if (c == '\\') {
 				str_scape = true;
 			}
-		} else if (c == ' ' || c == '\t' || c == '\0' || c == ';' || c == ']') {
+		} else if (c == sep || c == '\t' || c == '\0' || c == ';' || c == ']') {
 			if (begin != -1) {
 				string_set_ref_s(&elem, &line[begin], i - begin);
 				assert(elem.length != 0);
@@ -250,17 +312,39 @@ parse_line_file(context_t *ctx, line_t *parsed_line)
 	return false;
 }
 
+error_t
+parse_reg(string_t *elem, uint32_t *n)
+{
+	string_t s;
+	char e0;
+	if (elem->length < 2) {
+		return -1;
+	}
+	e0 = elem->data[0]; // e0 contains the element's first char
+	s.data = elem->data + 1; // s contains the element without the first char
+	s.length = elem->length-1;
+	string_write(&s, stdout);
+	if (e0 == 'r') {
+		return dec2num(&s, n);
+	}
+	return OK;
+}
+
 int
 assemble(context_t *ctx, line_t *parsed_line)
 {
-	string_t *op;
+	error_t err;
+	string_t *elem;
+	vector_t *elems = &parsed_line->elems;
+	operand_t *op;
+
 	instruction_t *inst;
 	int i;
 
-	op = vector_get(&parsed_line->elems, 0);
+	elem = vector_get(elems, 0);
 	for (i = 0; i < instructions_len; i++) {
 		inst = (instruction_t *) &instructions[i];
-		if (string_cmp_c(op, inst->inst) == EQUAL) {
+		if (string_cmp_c(elem, inst->inst) == EQUAL) {
 			printf("%s %d %d\n", inst->inst, ctx->linum-1, i);
 			break;
 		}
@@ -268,10 +352,29 @@ assemble(context_t *ctx, line_t *parsed_line)
 	if (i == instructions_len) {
 		return -1; // Mnemonic not found
 	}
-	if ((parsed_line->elems.length - 1) != inst->ops_len) {
-		printf("Expected %d, found %d\n", inst->ops_len, parsed_line->elems.length - 1);
+	if ((elems->length - 1) != inst->ops_len) {
+		printf("Expected %d, found %d\n", inst->ops_len, elems->length - 1);
 		return -1; // Invalid number of operands
 	}
+
+	uint32_t n;
+	for (i = 0; i < elems->length - 1; i++) {
+		elem = vector_get(elems, i + 1);
+		op = &inst->ops[i];
+		switch (op->type) {
+		case REG:
+			if ((err = parse_reg(elem, &n)) != OK) {
+				printf(" ERR parse_reg: %s\n", error_string[err]);
+				return -1;
+			}
+			printf("r%d ", n);
+			break;
+		case IMM:
+			// parse_imm();
+			break;
+		}
+	}
+	printf("\n");
 	return 0;
 }
 

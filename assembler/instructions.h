@@ -10,7 +10,6 @@
 typedef enum {
     REG,
     IMM,
-    REG_IMM,
 } operand_type_t;
 
 typedef enum {
