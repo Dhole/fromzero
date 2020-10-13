@@ -41,58 +41,281 @@ symbol_cmp(symbol_t *a, symbol_t *b)
 	return string_cmp(&a->label, &b->label);
 }
 
+typedef struct {
+	char *src_path;
+	FILE *src_file;
+	int linum;
+	int colnum;
+	char line[MAX_COL+1]; // TODO: Remove
+	char str[MAX_COL]; // Buffer to hold a temporary string
+	// int str_cap;
+	size_t addr;
+	vector_t sym_table;
+} context_t;
+
+error_t
+context_init(context_t *ctx, char *src_path)
+{
+	error_t err;
+	ctx->src_path = src_path;
+	ctx->src_file = fopen(ctx->src_path, "r");
+	if (!ctx->src_file) {
+		fprintf(stderr, "ERR: Can't open test.asm, err = %d\n", errno);
+		return -1;
+	}
+
+	if ((err = vector_init(&ctx->sym_table, sizeof(symbol_t), 0,
+			       (void (*)(void *)) symbol_free)) != OK) {
+		fprintf(stderr, "ERR: Out of memory\n");
+		return err;
+	}
+
+	// ctx->str_cap = 64;
+	// ctx->str = malloc(ctx->str_cap);
+	// if (ctx->str == NULL) {
+	// 	return ERR_NO_MEM;
+	// }
+	ctx->linum = 1;
+	ctx->colnum = 1;
+	ctx->addr = 0;
+
+	return OK;
+}
+
+int
+context_reset_file(context_t *ctx)
+{
+	ctx->linum = 0;
+	ctx->addr = 0;
+	return fseek(ctx->src_file, 0, SEEK_SET);
+}
+
+void
+context_free(context_t *ctx)
+{
+	vector_free(&ctx->sym_table);
+	if (ctx->src_file != NULL) {
+		fclose(ctx->src_file);
+	}
+	// if (ctx->str != NULL) {
+	// 	free(ctx->str);
+	// }
+}
+
+
 bool
 is_whitespace(char c)
 {
-	if (c == ' ' || c == '\t') {
+	if (c == ' ' || c == '\t' || c == '\n') {
 		return true;
 	}
 	return false;
 }
 
-#define MAX_TOKENS 16
+#define MAX_STR_LEN 256
+#define MAX_TOKENS 32
+
+typedef enum {
+	LIST,
+	SYMBOL,
+	STRING,
+	INTEGER,
+} sexpr_type_t;
+
+typedef struct {
+	union {
+		vector_t list; // list of sexpr_t
+		string_t symbol;
+		string_t string;
+		int32_t integer;
+	};
+	sexpr_type_t type;
+} sexpr_t;
 
 void
-get_tokens(char *line, vector_t tokens)
+dbg_print_sexpr(sexpr_t *sexpr)
 {
-	int begin = -1, in_str = false, str_scape = false, i;
-	char c;
-	string_t token;
-	string_init(&token);
+	int i;
+	sexpr_t *sexpr0;
+	switch (sexpr->type) {
+	case SYMBOL:
+		printf("sym:");
+		string_write(&sexpr->symbol, stdout);
+		printf(" ");
+		break;
+	case STRING:
+		printf("str:'");
+		string_write(&sexpr->string, stdout);
+		printf("' ");
+		break;
+	case INTEGER:
+		printf("int:%d ", sexpr->integer);
+		break;
+	case LIST:
+		printf("(");
+		for (i = 0; i < sexpr->list.length; i++) {
+			sexpr0 = (sexpr_t *) vector_get(&sexpr->list, i);
+			assert(sexpr0 != NULL);
+			// printf("%d:", i);
+			dbg_print_sexpr(sexpr0);
+		}
+		printf(") ");
+		break;
+	}
+}
 
-	for (i = 0; i < MAX_COL; i++) {
-		c = line[i];
-		if (in_str) {
-			if (c == '\0') {
-				break;
-			} else if (str_scape) {
+typedef enum {
+	IN_WS, // White Space
+	IN_SYMBOL,
+	IN_STRING,
+	IN_INTEGER,
+	IN_COMMENT,
+} lexer_state_t;
+
+error_t
+sexpr_set(sexpr_t *sexpr, string_t *str, lexer_state_t state)
+{
+	error_t err;
+	assert(str->length != 0);
+
+	// printf("DBG: token: (%p) '", sexpr);
+	// string_write(str, stdout);
+	// printf("'\n");
+
+	switch (state) {
+	case IN_SYMBOL:
+		sexpr->type = SYMBOL;
+		string_set(&sexpr->symbol, str);
+		break;
+	case IN_STRING:
+		sexpr->type = STRING;
+		string_set(&sexpr->string, str);
+		break;
+	case IN_INTEGER:
+		sexpr->type = INTEGER;
+		err = str2num(str, (uint32_t *) &sexpr->integer);
+		if (err != OK) { return err; }
+		break;
+	default:
+		break;
+	}
+	return OK;
+}
+
+// error_t
+// list_push(vector_t *list, string_t *str, lexer_state_t state)
+// {
+// 	error_t err;
+// 	sexpr_t sexpr;
+// 
+// 	// printf("DBG: token: (%p)'", list);
+// 	// string_write(str, stdout);
+// 	// printf("'\n");
+// 
+// 	return vector_push(list, &sexpr);
+// }
+
+error_t
+tokenize(context_t *ctx, sexpr_t *sexpr, int level)
+{
+	error_t err;
+	bool str_scape = false;
+	lexer_state_t old_state = IN_WS, state = IN_WS;
+	char c;
+	// sexpr_t *_sexpr = sexpr;
+	vector_t *list = &sexpr->list;
+	sexpr_t new_sexpr;
+	static char _data[MAX_COL];
+	string_t str = (string_t) { data: _data, length: 0 };
+
+	// printf("DBG tokenize %d %p\n", level, sexpr);
+	if (level != 0) {
+		sexpr = &new_sexpr;
+	}
+
+	while ((c = getc(ctx->src_file)) != EOF) {
+		// printf("DBG %c\n", c);
+		ctx->colnum++;
+		if (c == '\n') {
+			ctx->linum++;
+			ctx->colnum = 0;
+		}
+
+		if (state == IN_COMMENT) {
+		} else if (state == IN_STRING) {
+			if (str_scape) {
 				str_scape = false;
 			} else if (c == '"') {
-				in_str = false;
+				// Remove trailing '"'
+				str.data++;
+				str.length--;
+				state = IN_WS;
 			} else if (c == '\\') {
 				str_scape = true;
 			}
-		} else if (is_whitespace(c) || c == '\0' || c == ';') {
-			if (begin != -1) {
-				string_set_ref_s(&token, &line[begin], i - begin);
-				assert(token.length != 0);
-				vector_push(tokens, &token);
-				begin = -1;
-			}
-			if (c == '\0' || c == ';' || tokens->length == MAX_ELEM) {
-				break;
-			}
+		} else if (c == ';') {
+			state = IN_COMMENT;
+		} else if (c == '(' || c == ')'){
+			state = IN_WS;
+		} else if (is_whitespace(c)) {
+			state = IN_WS;
 		} else { // token character
-			if (begin == -1) {
-				begin = i;
+			if (state == IN_WS) {
 				if (c == '"') {
-					in_str = true;
-					continue;
+					state = IN_STRING;
+				} else if (c >= '0' && c <= '9') {
+					state = IN_INTEGER;
+				} else {
+					state = IN_SYMBOL;
+				}
+				if (state != IN_WS) {
+					str.length = 0;
 				}
 			}
 		}
-	}
 
+		if (old_state != IN_WS && state != old_state) {
+			err = sexpr_set(sexpr, &str, old_state);
+			if (err != OK) { return err; }
+			if (level == 0) {
+				return OK;
+			} else {
+				err = vector_push(list, sexpr);
+				if (err != OK) { return err; }
+				// printf("DBG sexpr (%p)\n", _sexpr);
+				// dbg_print_sexpr(_sexpr);
+				// printf(" %d \n", _sexpr->list.length);
+			}
+		}
+
+		if (c == '(') {
+			sexpr->type = LIST;
+			err = vector_init(&sexpr->list, sizeof(sexpr_t), 2, NULL);
+			if (err != OK) { return err; }
+			// TODO, vector_push first,
+			err = tokenize(ctx, sexpr, level+1);
+			// dbg_print_sexpr(sexpr);
+			// printf(" %d \n", sexpr->list.length);
+			if (err != OK) { return err; }
+			if (level == 0) {
+				return OK;
+			} else {
+				err = vector_push(list, sexpr);
+				if (err != OK) {return err; }
+			}
+		} else if (c == ')') {
+			return OK;
+		}
+
+		old_state = state;
+		str.data[str.length] = (char) c;
+		str.length++;
+		// If str is full, grow its capacity
+		if (str.length == MAX_COL) {
+			return -1;
+		}
+	}
+	return OK;
 }
 
 // TODO: LINE = [LABEL:] [.DIRECTIVE | INST] [EXPR COMMA]*
@@ -244,54 +467,6 @@ dbg_print_parsed_line(vector_t *line_elems, int linum)
 	}
 	printf("\n");
 }
-
-typedef struct {
-	char *src_path;
-	FILE *src_file;
-	char line[MAX_COL+1];
-	int linum;
-	size_t addr;
-	vector_t sym_table;
-} context_t;
-
-int
-context_init(context_t *ctx, char *src_path)
-{
-	ctx->src_path = src_path;
-	ctx->src_file = fopen(ctx->src_path, "r");
-	if (!ctx->src_file) {
-		fprintf(stderr, "ERR: Can't open test.asm, err = %d\n", errno);
-		return -1;
-	}
-
-	if (vector_init(&ctx->sym_table, sizeof(symbol_t), 0, (void (*)(void *)) symbol_free) != OK) {
-		fprintf(stderr, "ERR: Out of memory\n");
-		return -1;
-	}
-
-	ctx->linum = 0;
-	ctx->addr = 0;
-
-	return 0;
-}
-
-int
-context_reset_file(context_t *ctx)
-{
-	ctx->linum = 0;
-	ctx->addr = 0;
-	return fseek(ctx->src_file, 0, SEEK_SET);
-}
-
-void
-context_free(context_t *ctx)
-{
-	vector_free(&ctx->sym_table);
-	if (ctx->src_file != NULL) {
-		fclose(ctx->src_file);
-	}
-}
-
 bool
 parse_line_file(context_t *ctx, line_t *parsed_line)
 {
@@ -406,6 +581,19 @@ main(int argc, char **argv)
 		err = -1;
 		goto cleanup;
 	}
+
+	// DBG BEGIN
+	// vector_t sexpr_list;
+	// vector_init(&sexpr_list, sizeof(sexpr_t), 1, NULL);
+	sexpr_t sexpr; // = (sexpr_t) { type: LIST, list: sexpr_list };
+	if ((err = tokenize(&ctx, &sexpr, 0)) != OK) {
+		fprintf(stderr, "ERR: tokenize(): %s\n", error_string[err]);
+		err = -1;
+		goto cleanup;
+	}
+	dbg_print_sexpr(&sexpr);
+	printf("\n --- \n");
+	// DBG END
 
 	// Pass 1.  Parse lines
 	symbol_t symbol;

@@ -23,16 +23,16 @@ srai  rd, rs1, imm
 slti  rd, rs1, imm
 sltiu rd, rs1, imm
 
-lb  rd, imm(rs1) / lb  rd, [rs1,imm]
-lh  rd, imm(rs1) / lh  rd, [rs1,imm]
-lw  rd, imm(rs1) / lw  rd, [rs1,imm]
-lbu rd, imm(rs1) / lbu rd, [rs1,imm]
-lhu rd, imm(rs1) / lhu rd, [rs1,imm]
+lb  rd, imm(rs1) / lb  rd, rs1, imm
+lh  rd, imm(rs1) / lh  rd, rs1, imm
+lw  rd, imm(rs1) / lw  rd, rs1, imm
+lbu rd, imm(rs1) / lbu rd, rs1, imm
+lhu rd, imm(rs1) / lhu rd, rs1, imm
 
 ## S-type
-sb  rs2, imm(rs1) / sb rs2, [rs1,imm]
-sh  rs2, imm(rs1) / sh rs2, [rs1,imm]
-sw  rs2, imm(rs1) / sw rs2, [rs1,imm]
+sb  rs2, imm(rs1) / sb rs2, rs1, imm
+sh  rs2, imm(rs1) / sh rs2, rs1, imm
+sw  rs2, imm(rs1) / sw rs2, rs1, imm
 
 ## B-type
 beq  rs1, rs2, imm

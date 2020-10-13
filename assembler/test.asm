@@ -1,29 +1,79 @@
+;;; led-stm32.asm
+;;; written by Frank Sergeant
+;;;    frank@pygmy.utoh.org
+;;;    http://pygmy.utoh.org/riscy
+;;; This program is in the public domain.  See http://pygmy.utoh.org/riscy/cortex/
+;;; for notes about the program and how to assemble, link, and burn to flash.
 
-.include "msp430x2xx.inc"
+;;; Blink the LED on the Olimex STM32-P103 ARM Cortex M3 board.
 
-.entry_point start
+;;; Directives
+        .thumb                  ; (same as saying '.code 16')
+        .syntax unified
 
-.org 0xf800
-start:
-  ;mov.w #0x5a80, &WDTCTL
-  mov.w	#WDTPW|WDTHOLD, &WDTCTL
-  mov.b #0x41, &P1DIR
-  mov.w #0x01, r8
-repeat:
-  mov.b r8, &P1OUT
-  xor.b #0x41, r8
-  mov.w #60000, r9
-waiter:
-  dec r9
-  jnz waiter
-  jmp repeat
+;;; Equates
+        .equ GPIOC_CRH,   0x40011004
+        .equ GPIOC_ODR,   0x4001100C
+        .equ RCC_APB2ENR, 0x40021018
+        .equ STACKINIT,   0x20005000
 
-.org 0xfffe
-  dw start             ; set reset vector to 'init' label
+        .equ LEDDELAY,    800000
 
-.ascii "Hola que tal"
-.ascii "Hola que tal \" ASD"
+.section .text
+        .org 0
 
-; AAAA BBBB CCCC DDDD EEEE FFFF GGGG HHHH IIII JJJJ KKKK LLLL MMMM NNNN OOOO PPPP QQQQ RRRR SSSS TTTT
+;;; Vectors
+vectors:
+        .word STACKINIT         ; stack pointer value when stack is empty
+        .word _start + 1        ; reset vector (manually adjust to odd for thumb)
+        .word _nmi_handler + 1  ;
+        .word _hard_fault  + 1  ;
+        .word _memory_fault + 1 ;
+        .word _bus_fault + 1    ;
+        .word _usage_fault + 1  ;
 
-.ascii "FIN"
+_start:
+
+        ;; Enable the Port C peripheral clock by setting bit 4
+        ldr r6, = RCC_APB2ENR
+        mov r0, 0x10
+        str r0, [r6]
+
+        ;; Set the config and mode bits for Port C bit 12 so it will
+        ;; be a push-pull output (up to 50 MHz) by setting bits 19-16
+        ;; to '0011'.
+
+        ldr r6, = GPIOC_CRH
+        ldr r0, = 0x44434444
+        str r0, [r6]
+
+        ;; Load R2 and R3 with the "on" and "off" constants
+        mov r2, 0              ; value to turn on LED
+        mov r3, 0x1000         ; value to turn off LED
+
+        ldr r6, = GPIOC_ODR    ;  point to Port C output data register
+
+loop:
+        str r2, [r6]           ; clear Port C, pin 12, turning on LED
+        ldr r1, = LEDDELAY
+delay1:
+        subs r1, 1
+        bne delay1
+
+        str r3, [r6]           ; set Port C, pin 12, turning off LED
+        ldr r1, = LEDDELAY
+delay2:
+        subs r1, 1
+        bne delay2
+
+        b loop                 ; continue forever
+
+_dummy:                        ; if any int gets triggered, just hang in a loop
+_nmi_handler:
+_hard_fault:
+_memory_fault:
+_bus_fault:
+_usage_fault:
+        add r0, 1
+        add r1, 1
+        b _dummy
