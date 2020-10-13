@@ -274,35 +274,49 @@ tokenize(context_t *ctx, sexpr_t *sexpr, int level)
 			}
 		}
 
+		// If we changed state comming from a non-whitespace state, we
+		// have completed a token.
 		if (old_state != IN_WS && state != old_state) {
+			if (level != 0) {
+				// First reserve a new slot in the list, assign
+				// it to sexpr temporarly.
+				err = vector_push(list, sexpr);
+				if (err != OK) { return err; }
+				sexpr = (sexpr_t *) vector_get(list, list->length - 1);
+			}
 			err = sexpr_set(sexpr, &str, old_state);
 			if (err != OK) { return err; }
 			if (level == 0) {
 				return OK;
 			} else {
-				err = vector_push(list, sexpr);
-				if (err != OK) { return err; }
+				// Set sexpr back to the stack allocated
+				// new_sexpr for the following iterations.
+				sexpr = &new_sexpr;
 				// printf("DBG sexpr (%p)\n", _sexpr);
 				// dbg_print_sexpr(_sexpr);
 				// printf(" %d \n", _sexpr->list.length);
 			}
 		}
 
+		// If we are at the beginning of the list, prepare an empty
+		// list and recurse.
 		if (c == '(') {
+			if (level != 0) {
+				err = vector_push(list, sexpr);
+				if (err != OK) { return err; }
+				sexpr = (sexpr_t *) vector_get(list, list->length - 1);
+			}
 			sexpr->type = LIST;
 			err = vector_init(&sexpr->list, sizeof(sexpr_t), 2, NULL);
 			if (err != OK) { return err; }
-			// TODO, vector_push first,
 			err = tokenize(ctx, sexpr, level+1);
-			// dbg_print_sexpr(sexpr);
-			// printf(" %d \n", sexpr->list.length);
 			if (err != OK) { return err; }
 			if (level == 0) {
 				return OK;
 			} else {
-				err = vector_push(list, sexpr);
-				if (err != OK) {return err; }
+				sexpr = &new_sexpr;
 			}
+		// If we are at the end of the list, return from recursion.
 		} else if (c == ')') {
 			return OK;
 		}
