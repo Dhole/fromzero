@@ -1,4 +1,4 @@
-(.s loop)
+(.s rv32)
     (add r1 r2 r3)
     (sub r2 r3 r4)
     (xor r4 r12 r15)
@@ -11,6 +11,7 @@
 
     (beq r4 r8 0x22)
 
+(.s arm-thumb)
     (.equ GPIOC_CRH 0x40011004)
 
     (.section .text)

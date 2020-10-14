@@ -10,6 +10,12 @@ typedef enum error_t {
     ERR_NUM_LONG = 5,
     ERR_EMPTY = 6,
     ERR_WRITE = 7,
+    ERR_UNK = 8,
+    ERR_EOF = 9,
+    ERR_EVAL = 10,
+    ERR_EVAL_HEADNOSYM = 11,
+    ERR_EVAL_ARGSLEN = 12,
+    ERR_EVAL_BADTYPE = 13,
 } error_t;
 
 extern const char *error_string[];

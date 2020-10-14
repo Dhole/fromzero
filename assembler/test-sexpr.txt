@@ -1,4 +1,4 @@
-(a (b c) d)
-(a abc 12 ("hello"   world (+ 1 2))    0x100); asdasd
 (a abc 12 )
-a abc 12 "hello"   world    0x100; asdasd
+(a (b c) d)
+(a abc 12 (foo "hello"   world (+ 1 2))    0x100); asdasd
+(a abc 12 )

@@ -7,4 +7,10 @@ const char *error_string[] = {
     "number too long", // 5
     "empty", // 6
     "write", // 7
+    "unknown", // 8
+    "EOF", // 9
+    "eval of invalid sexpr", // 10
+    "head of list is not a symbol", // 11
+    "incorrect number of args in list", // 12
+    "incorrect type of args in list", // 13
 };

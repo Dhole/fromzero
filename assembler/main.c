@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <assert.h>
+#include <string.h>
 
 #include "instructions.h"
 #include "number.h"
@@ -46,39 +47,39 @@ typedef struct {
 	FILE *src_file;
 	int linum;
 	int colnum;
-	char line[MAX_COL+1]; // TODO: Remove
 	char str[MAX_COL]; // Buffer to hold a temporary string
-	// int str_cap;
 	size_t addr;
 	vector_t sym_table;
 } context_t;
 
 error_t
-context_init(context_t *ctx, char *src_path)
+context_init(context_t *ctx)
 {
 	error_t err;
-	ctx->src_path = src_path;
-	ctx->src_file = fopen(ctx->src_path, "r");
-	if (!ctx->src_file) {
-		fprintf(stderr, "ERR: Can't open test.asm, err = %d\n", errno);
-		return -1;
-	}
+	ctx->src_path = NULL;
+	ctx->src_file = NULL;
 
 	if ((err = vector_init(&ctx->sym_table, sizeof(symbol_t), 0,
 			       (void (*)(void *)) symbol_free)) != OK) {
-		fprintf(stderr, "ERR: Out of memory\n");
 		return err;
 	}
 
-	// ctx->str_cap = 64;
-	// ctx->str = malloc(ctx->str_cap);
-	// if (ctx->str == NULL) {
-	// 	return ERR_NO_MEM;
-	// }
 	ctx->linum = 1;
-	ctx->colnum = 1;
+	ctx->colnum = 0;
 	ctx->addr = 0;
 
+	return OK;
+}
+
+error_t
+context_open(context_t *ctx, char *src_path)
+{
+	ctx->src_path = src_path;
+	ctx->src_file = fopen(ctx->src_path, "r");
+	if (!ctx->src_file) {
+		fprintf(stderr, "ERR: Can't open %s, errno = %d\n", ctx->src_path, errno);
+		return ERR_UNK;
+	}
 	return OK;
 }
 
@@ -96,17 +97,37 @@ context_free(context_t *ctx)
 	vector_free(&ctx->sym_table);
 	if (ctx->src_file != NULL) {
 		fclose(ctx->src_file);
+		ctx->src_file = NULL;
 	}
-	// if (ctx->str != NULL) {
-	// 	free(ctx->str);
-	// }
 }
 
+void
+error(context_t *ctx, error_t err, char *msg)
+{
+	fprintf(stderr, "ERR");
+	if (ctx != NULL) {
+		fprintf(stderr, " at %s:%d:%d", ctx->src_path, ctx->linum, ctx->colnum);
+	}
+	if (msg != NULL) {
+		fprintf(stderr, " %s", msg);
+
+	}
+	fprintf(stderr, " (%s)\n", error_string[err]);
+}
 
 bool
 is_whitespace(char c)
 {
 	if (c == ' ' || c == '\t' || c == '\n') {
+		return true;
+	}
+	return false;
+}
+
+bool
+is_alpha(char c)
+{
+	if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) {
 		return true;
 	}
 	return false;
@@ -120,6 +141,7 @@ typedef enum {
 	SYMBOL,
 	STRING,
 	INTEGER,
+	NIL,
 } sexpr_type_t;
 
 typedef struct {
@@ -131,6 +153,33 @@ typedef struct {
 	};
 	sexpr_type_t type;
 } sexpr_t;
+
+void
+sexpr_init(sexpr_t *sexpr)
+{
+	sexpr->type = NIL;
+}
+
+void
+sexpr_free(sexpr_t *sexpr)
+{
+	switch (sexpr->type) {
+	case SYMBOL:
+		string_free(&sexpr->symbol);
+		break;
+	case STRING:
+		string_free(&sexpr->string);
+		break;
+	case INTEGER:
+		break;
+	case NIL:
+		break;
+	case LIST:
+		vector_free(&sexpr->list);
+		break;
+	}
+	sexpr->type = NIL;
+}
 
 void
 dbg_print_sexpr(sexpr_t *sexpr)
@@ -150,6 +199,9 @@ dbg_print_sexpr(sexpr_t *sexpr)
 		break;
 	case INTEGER:
 		printf("int:%d ", sexpr->integer);
+		break;
+	case NIL:
+		printf("nil ");
 		break;
 	case LIST:
 		printf("(");
@@ -202,21 +254,8 @@ sexpr_set(sexpr_t *sexpr, string_t *str, lexer_state_t state)
 	return OK;
 }
 
-// error_t
-// list_push(vector_t *list, string_t *str, lexer_state_t state)
-// {
-// 	error_t err;
-// 	sexpr_t sexpr;
-// 
-// 	// printf("DBG: token: (%p)'", list);
-// 	// string_write(str, stdout);
-// 	// printf("'\n");
-// 
-// 	return vector_push(list, &sexpr);
-// }
-
 error_t
-tokenize(context_t *ctx, sexpr_t *sexpr, int level)
+parse(context_t *ctx, sexpr_t *sexpr, int level)
 {
 	error_t err;
 	bool str_scape = false;
@@ -228,7 +267,7 @@ tokenize(context_t *ctx, sexpr_t *sexpr, int level)
 	static char _data[MAX_COL];
 	string_t str = (string_t) { data: _data, length: 0 };
 
-	// printf("DBG tokenize %d %p\n", level, sexpr);
+	// printf("DBG parse %d %p\n", level, sexpr);
 	if (level != 0) {
 		sexpr = &new_sexpr;
 	}
@@ -241,7 +280,11 @@ tokenize(context_t *ctx, sexpr_t *sexpr, int level)
 			ctx->colnum = 0;
 		}
 
-		if (state == IN_COMMENT) {
+		if (c == '\n') {
+			if (state == IN_COMMENT) {
+				state = IN_WS;
+			}
+		} else if (state == IN_COMMENT) {
 		} else if (state == IN_STRING) {
 			if (str_scape) {
 				str_scape = false;
@@ -273,10 +316,14 @@ tokenize(context_t *ctx, sexpr_t *sexpr, int level)
 				}
 			}
 		}
+		// printf("DBG c:'%c' (%d)\n", c, state);
+		if (state == IN_COMMENT) {
+			goto parse_do;
+		}
 
-		// If we changed state comming from a non-whitespace state, we
-		// have completed a token.
-		if (old_state != IN_WS && state != old_state) {
+		// If we changed state comming from a non-whitespace/comment
+		// state, we have completed a token.
+		if (old_state != IN_WS && old_state != IN_COMMENT && state != old_state) {
 			if (level != 0) {
 				// First reserve a new slot in the list, assign
 				// it to sexpr temporarly.
@@ -307,9 +354,10 @@ tokenize(context_t *ctx, sexpr_t *sexpr, int level)
 				sexpr = (sexpr_t *) vector_get(list, list->length - 1);
 			}
 			sexpr->type = LIST;
-			err = vector_init(&sexpr->list, sizeof(sexpr_t), 2, NULL);
+			err = vector_init(&sexpr->list, sizeof(sexpr_t), 2,
+					  (void (*)(void *)) sexpr_free);
 			if (err != OK) { return err; }
-			err = tokenize(ctx, sexpr, level+1);
+			err = parse(ctx, sexpr, level+1);
 			if (err != OK) { return err; }
 			if (level == 0) {
 				return OK;
@@ -321,133 +369,150 @@ tokenize(context_t *ctx, sexpr_t *sexpr, int level)
 			return OK;
 		}
 
+parse_do:
 		old_state = state;
 		str.data[str.length] = (char) c;
 		str.length++;
 		// If str is full, grow its capacity
 		if (str.length == MAX_COL) {
-			return -1;
+			return ERR_UNK;
+		}
+	}
+	return ERR_EOF;
+}
+
+error_t
+validate_args(vector_t *args, int length, sexpr_type_t *types)
+{
+	int i;
+	sexpr_t *sexpr;
+	if (args->length != length) {
+		return ERR_EVAL_ARGSLEN;
+	}
+	for (i = 0; i < length; i++) {
+		sexpr = vector_get(args, i);
+		if (sexpr->type != types[i]) {
+			return ERR_EVAL_BADTYPE;
 		}
 	}
 	return OK;
 }
 
-// TODO: LINE = [LABEL:] [.DIRECTIVE | INST] [EXPR COMMA]*
-//       EXPR = [REGISTER | IMM | '[' [EXPR COMMA]* ']']
-//       REGISTER = 'r'[0-9]+
-//       IMM = [LITERAL | SYMBOL]
-//       LITERAL = [0-9].*
-//       SYMBOL = [a-Z].*
-void
-get_elems(vector_t *elems, char *line)
+error_t
+dir_symbol(context_t *ctx, string_t *name)
 {
-	int begin = -1, in_str = false, str_scape = false, i;
+	error_t err;
+ 	symbol_t symbol;
+
+	err = string_set(&symbol.label, name);
+	if (err != OK) { return err; }
+	symbol.addr = ctx->addr;
+	return vector_push(&ctx->sym_table, &symbol);
+}
+
+error_t
+eval_directive(context_t *ctx, string_t *dir, vector_t *args)
+{
+	error_t err;
+
+ 	if (string_cmp_c(dir, ".s") == EQUAL) {
+		err = validate_args(args, 1, (sexpr_type_t[]) { SYMBOL });
+		if (err != OK) { return err; }
+		return dir_symbol(ctx, &((sexpr_t *) vector_get(args, 0))->symbol);
+ 	} else {
+		printf("DBG Unknown directive: ");
+		string_write(dir, stdout);
+		printf("\n");
+	}
+	return OK;
+}
+
+error_t
+eval_inst(context_t *ctx, string_t *inst, vector_t *args)
+{
+	printf("DBG Unknown inst: ");
+	string_write(inst, stdout);
+	printf("\n");
+
+	ctx->addr += 4;
+
+	return OK;
+}
+
+error_t
+eval_fn(context_t *ctx, string_t *fn, vector_t *args)
+{
+	printf("DBG Unknown fn: ");
+	string_write(fn, stdout);
+	printf("\n");
+	return OK;
+}
+
+error_t
+eval(context_t *ctx, sexpr_t *sexpr, sexpr_t *res, int pass)
+{
+	error_t err;
+	sexpr_t head;
+	sexpr_t elem;
+	vector_t list;
 	char c;
-	char sep = ' ';
-	string_t elem;
+	int i;
 
-	string_init(&elem);
-	for (i = 0; i < MAX_COL; i++) {
-		c = line[i];
-		if (in_str) {
-			if (c == '\0') {
-				break;
-			} else if (str_scape) {
-				str_scape = false;
-			} else if (c == '"') {
-				in_str = false;
-			} else if (c == '\\') {
-				str_scape = true;
-			}
-		} else if (c == sep || c == '\t' || c == '\0' || c == ';' || c == ']') {
-			if (begin != -1) {
-				string_set_ref_s(&elem, &line[begin], i - begin);
-				assert(elem.length != 0);
-				vector_push(elems, &elem);
-				begin = -1;
-			}
-			if (c == '\0' || c == ';' || elems->length == MAX_ELEM) {
-				break;
-			}
-		} else { // token character
-			if (begin == -1) {
-				begin = i;
-				if (c == '"') {
-					in_str = true;
-					continue;
-				}
-				if (c == '[') { // skip '['
-					begin++;
-					i++;
-					continue;
-				}
-			}
+	sexpr_init(&elem);
+
+	switch (sexpr->type) {
+	case LIST:
+		if (sexpr->list.length == 0) {
+			break;
 		}
-	}
-}
-
-enum elem_type
-get_elem_type(string_t *elem)
-{
-	if (elem->data[0] == '.') {
-		return ELEM_DIRECTIVE;
-	} else if (elem->data[elem->length - 1] == ':') {
-		return ELEM_LABEL;
-	} else {
-		return ELEM_OP;
-	}
-}
-
-typedef struct {
-	string_t label;
-	enum line_type type;
-	vector_t elems;
-} line_t;
-
-void
-parse_line(line_t *parsed, char *line)
-{
-	enum elem_type elem0_type;
-	string_t *elem0;
-
-	get_elems(&parsed->elems, line);
-	parsed->label.length = 0;
-	if (parsed->elems.length == 0) {
-		parsed->type = LINE_NONE;
-		return;
-	}
-
-	elem0 = vector_get(&parsed->elems, 0);
-	elem0_type = get_elem_type(elem0);
-	if (elem0_type == ELEM_LABEL) {
-		elem0->length--; // Remove ':' suffix
-		parsed->label = *elem0;
-		vector_pop_front(&parsed->elems, NULL);
-
-		if (parsed->elems.length == 0) {
-			parsed->type = LINE_NONE;
-			return;
+		err = vector_init(&list, sizeof(sexpr_t), 0,
+				  (void (*)(void *)) sexpr_free);
+		if (err != OK) { goto eval_free; }
+		for (i = 0; i < sexpr->list.length; i++) {
+			if (i == 0) {
+				err = eval(ctx, vector_get(&sexpr->list, i),
+					   &head, pass);
+				if (err != OK) { goto eval_free; }
+				if (head.type != SYMBOL) {
+					err = ERR_EVAL_HEADNOSYM;
+				}
+			} else {
+				err = vector_push(&list, &elem);
+				if (err != OK) { goto eval_free; }
+				err = eval(ctx, vector_get(&sexpr->list, i),
+					   vector_get(&list, i - 1), pass);
+			}
+			if (err != OK) { goto eval_free; }
 		}
-		elem0 = vector_get(&parsed->elems, 0);
-		elem0_type = get_elem_type(elem0);
-	}
 
-	if (elem0_type == ELEM_OP) {
-		parsed->type = LINE_OP;
-		string_lower(elem0);
-		return;
-	} else if (elem0_type == ELEM_DIRECTIVE) {
-		parsed->type = LINE_DIRECTIVE;
-		elem0->data++; // Remove '.' prefix
-		return;
+		c = head.symbol.data[0];
+		if (c == '.') {
+			err = eval_directive(ctx, &head.symbol, &list);
+		} else if (is_alpha(c)) {
+			err = eval_inst(ctx, &head.symbol, &list);
+		} else {
+			err = eval_fn(ctx, &head.symbol, &list);
+		}
+		goto eval_free;
+	default:
+		break;
 	}
+	memcpy(res, sexpr, sizeof(sexpr_t));
+	sexpr->type = NIL;
+	return OK;
+
+eval_free:
+	sexpr_free(sexpr);
+	sexpr_free(&head);
+	vector_free(&list);
+	sexpr->type = NIL; // TMP
+	return err;
 }
 
 void
 dbg_print_sym_table(vector_t *sym_table)
 {
 	symbol_t *sym_ref;
-	printf("\n---\n\n");
 	int i;
 	for (i = 0; i < sym_table->length; i++) {
 		sym_ref = vector_get(sym_table, i);
@@ -459,55 +524,13 @@ dbg_print_sym_table(vector_t *sym_table)
 	}
 }
 
-void
-dbg_print_parsed_line(vector_t *line_elems, int linum)
-{
-	enum elem_type elem_type;
-	string_t *elem;
-	printf("%02d ", linum+1);
-	if (line_elems->length > 0) {
-		elem_type = get_elem_type(vector_get(line_elems, 0));
-		switch (elem_type) {
-			case ELEM_OP: printf("OP "); break;
-			case ELEM_LABEL: printf("LABEL "); break;
-			case ELEM_DIRECTIVE: printf("DIRECTIVE "); break;
-		}
-	}
-	for (int i = 0; i < line_elems->length; i++) {
-		printf("%d:", i);
-		elem = (string_t *) vector_get(line_elems, i);
-		string_write(elem, stdout);
-		printf(" ");
-	}
-	printf("\n");
-}
-bool
-parse_line_file(context_t *ctx, line_t *parsed_line)
-{
-	int c, colnum = 0;
-	vector_clear(&parsed_line->elems);
-	while ((c = getc(ctx->src_file)) != EOF) {
-		if (c == '\n') {
-			ctx->line[colnum] = '\0';
-			// printf("%02d: %s\n", linum+1, line);
-			parse_line(parsed_line, ctx->line);
-			ctx->linum += 1;
-			return true;
-		} else if (colnum < MAX_COL) {
-			ctx->line[colnum] = (char) c;
-			colnum += 1;
-		}
-	}
-	return false;
-}
-
 error_t
 parse_reg(string_t *elem, uint32_t *n)
 {
 	string_t s;
 	char e0;
 	if (elem->length < 2) {
-		return -1;
+		return ERR_UNK;
 	}
 	e0 = elem->data[0]; // e0 contains the element's first char
 	s.data = elem->data + 1; // s contains the element without the first char
@@ -519,111 +542,111 @@ parse_reg(string_t *elem, uint32_t *n)
 	return OK;
 }
 
-int
-assemble(context_t *ctx, line_t *parsed_line)
-{
-	error_t err;
-	string_t *elem;
-	vector_t *elems = &parsed_line->elems;
-	operand_t *op;
-
-	instruction_t *inst;
-	int i;
-
-	elem = vector_get(elems, 0);
-	for (i = 0; i < instructions_len; i++) {
-		inst = (instruction_t *) &instructions[i];
-		if (string_cmp_c(elem, inst->inst) == EQUAL) {
-			printf("%s %d %d\n", inst->inst, ctx->linum-1, i);
-			break;
-		}
-	}
-	if (i == instructions_len) {
-		return -1; // Mnemonic not found
-	}
-	if ((elems->length - 1) != inst->ops_len) {
-		printf("Expected %d, found %d\n", inst->ops_len, elems->length - 1);
-		return -1; // Invalid number of operands
-	}
-
-	uint32_t n;
-	for (i = 0; i < elems->length - 1; i++) {
-		elem = vector_get(elems, i + 1);
-		op = &inst->ops[i];
-		switch (op->type) {
-		case REG:
-			if ((err = parse_reg(elem, &n)) != OK) {
-				printf(" ERR parse_reg: %s\n", error_string[err]);
-				return -1;
-			}
-			printf("r%d ", n);
-			break;
-		case IMM:
-			// parse_imm();
-			break;
-		}
-	}
-	printf("\n");
-	return 0;
-}
+// int
+// assemble(context_t *ctx, line_t *parsed_line)
+// {
+// 	error_t err;
+// 	string_t *elem;
+// 	vector_t *elems = &parsed_line->elems;
+// 	operand_t *op;
+// 
+// 	instruction_t *inst;
+// 	int i;
+// 
+// 	elem = vector_get(elems, 0);
+// 	for (i = 0; i < instructions_len; i++) {
+// 		inst = (instruction_t *) &instructions[i];
+// 		if (string_cmp_c(elem, inst->inst) == EQUAL) {
+// 			printf("%s %d %d\n", inst->inst, ctx->linum-1, i);
+// 			break;
+// 		}
+// 	}
+// 	if (i == instructions_len) {
+// 		return -1; // Mnemonic not found
+// 	}
+// 	if ((elems->length - 1) != inst->ops_len) {
+// 		printf("Expected %d, found %d\n", inst->ops_len, elems->length - 1);
+// 		return -1; // Invalid number of operands
+// 	}
+// 
+// 	uint32_t n;
+// 	for (i = 0; i < elems->length - 1; i++) {
+// 		elem = vector_get(elems, i + 1);
+// 		op = &inst->ops[i];
+// 		switch (op->type) {
+// 		case REG:
+// 			if ((err = parse_reg(elem, &n)) != OK) {
+// 				printf(" ERR parse_reg: %s\n", error_string[err]);
+// 				return -1;
+// 			}
+// 			printf("r%d ", n);
+// 			break;
+// 		case IMM:
+// 			// parse_imm();
+// 			break;
+// 		}
+// 	}
+// 	printf("\n");
+// 	return 0;
+// }
 
 int
 main(int argc, char **argv)
 {
 	char *src_path = NULL;
-	// FILE *src_file = NULL;
-	// int c;
-	// int linum = 0, colnum = 0;
-	// char line[MAX_COL+1];
 	int err = 0;
 	context_t ctx;
+
+	// Initialize objects
+
+	if ((err = context_init(&ctx)) != OK) {
+		goto main_free;
+	}
+
+	// Gather arguments
 
 	if (argc < 2) {
 		fprintf(stderr, "ERR: No input file\n");
 		err = -1;
-		goto cleanup;
+		goto main_free;
 	}
 	src_path = argv[1];
-
-	if ((err = context_init(&ctx, src_path)) != 0) {
-		goto cleanup;
+	if ((err = context_open(&ctx, src_path)) != OK) {
+		goto main_free;
 	}
 
-	line_t parsed_line;
-	if (vector_init(&parsed_line.elems, sizeof(string_t), 0, NULL) != OK) {
-		fprintf(stderr, "ERR: Out of memory\n");
-		err = -1;
-		goto cleanup;
-	}
 
-	// DBG BEGIN
-	// vector_t sexpr_list;
-	// vector_init(&sexpr_list, sizeof(sexpr_t), 1, NULL);
-	sexpr_t sexpr; // = (sexpr_t) { type: LIST, list: sexpr_list };
-	if ((err = tokenize(&ctx, &sexpr, 0)) != OK) {
-		fprintf(stderr, "ERR: tokenize(): %s\n", error_string[err]);
-		err = -1;
-		goto cleanup;
-	}
-	dbg_print_sexpr(&sexpr);
-	printf("\n --- \n");
-	// DBG END
+	sexpr_t sexpr;
+	sexpr_init(&sexpr);
+	sexpr_t res;
 
-	// Pass 1.  Parse lines
-	symbol_t symbol;
-	while (parse_line_file(&ctx, &parsed_line)) {
-		if (parsed_line.label.length > 0) {
-			string_set(&symbol.label, &parsed_line.label);
-			symbol.addr = ctx.addr;
-			vector_push(&ctx.sym_table, &symbol);
+	// Pass 1
+	while (true) {
+		err = parse(&ctx, &sexpr, 0);
+		if (err == ERR_EOF) {
+			err = 0;
+			break;
+		} else if (err != OK) {
+			error(&ctx, err, "parse()");
+			goto main_free;
 		}
-		if (parsed_line.type == LINE_OP) {
-			ctx.addr += 2;
+		sexpr_init(&res);
+		dbg_print_sexpr(&sexpr);
+		printf("\n");
+
+		err = eval(&ctx, &sexpr, &res, 1);
+		if (err != OK) {
+			error(&ctx, err, "eval()");
+			err = -1;
+			goto main_free;
 		}
-		dbg_print_parsed_line(&parsed_line.elems, ctx.linum-1);
+		sexpr_free(&sexpr); // TMP
+		sexpr_free(&res);
+
 	}
-	dbg_print_sym_table(&ctx.sym_table);
 	vector_sort(&ctx.sym_table, (cmp_t (*)(void *, void *)) symbol_cmp);
+	printf("\n---\n\n");
+	dbg_print_sym_table(&ctx.sym_table);
 
 	// Find repetitions in the symbol table
 	string_t *prev_label = NULL;
@@ -637,7 +660,7 @@ main(int argc, char **argv)
 				string_write(prev_label, stderr);
 				fprintf(stderr, "\n");
 				err = -1;
-				goto cleanup;
+				goto main_free;
 			}
 		}
 		prev_label = &sym_ref->label;
@@ -647,20 +670,23 @@ main(int argc, char **argv)
 	if (context_reset_file(&ctx) != 0) {
 		fprintf(stderr, "ERR: Seeking input file\n");
 		err = -1;
-		goto cleanup;
+		goto main_free;
 	}
-	while (parse_line_file(&ctx, &parsed_line)) {
-		if (parsed_line.type == LINE_OP) {
-			if (assemble(&ctx, &parsed_line) != 0) {
-				fprintf(stderr, "ERR: Assemble line %d\n", ctx.linum-1);
-				err = -1;
-				goto cleanup;
-			}
-			ctx.addr += 2;
-		}
-	}
-cleanup:
+	// while (parse_line_file(&ctx, &parsed_line)) {
+	// 	if (parsed_line.type == LINE_OP) {
+	// 		if (assemble(&ctx, &parsed_line) != 0) {
+	// 			fprintf(stderr, "ERR: Assemble line %d\n", ctx.linum-1);
+	// 			err = -1;
+	// 			goto main_free;
+	// 		}
+	// 		ctx.addr += 2;
+	// 	}
+	// }
+
+main_free:
 	context_free(&ctx);
-	vector_free(&parsed_line.elems);
+	// vector_free(&parsed_line.elems);
+	sexpr_free(&sexpr);
+	sexpr_free(&res);
 	return err;
 }

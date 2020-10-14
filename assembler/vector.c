@@ -96,8 +96,9 @@ void
 vector_free(vector_t *v)
 {
 	vector_clear(v);
-	if (v->capacity > 0) {
+	if (v->data != NULL) {
 		free(v->data);
+		v->data = NULL;
 		v->capacity = 0;
 	}
 }
