@@ -1,6 +1,18 @@
 #ifndef ERRORS_H
 #define ERRORS_H
 
+#define TRY(expr) \
+    err = expr; \
+    if (err != OK) { \
+        return err; \
+    }
+
+#define TRY_GOTO(expr, label) \
+    err = expr; \
+    if (err != OK) { \
+        goto label; \
+    }
+
 typedef enum error_t {
     OK = 0,
     ERR_NO_MEM = 1,
@@ -16,6 +28,7 @@ typedef enum error_t {
     ERR_EVAL_HEADNOSYM = 11,
     ERR_EVAL_ARGSLEN = 12,
     ERR_EVAL_BADTYPE = 13,
+    ERR_IO = 14,
 } error_t;
 
 extern const char *error_string[];

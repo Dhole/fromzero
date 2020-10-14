@@ -13,4 +13,5 @@ const char *error_string[] = {
     "head of list is not a symbol", // 11
     "incorrect number of args in list", // 12
     "incorrect type of args in list", // 13
+    "file error", // 14
 };

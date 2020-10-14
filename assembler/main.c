@@ -59,10 +59,8 @@ context_init(context_t *ctx)
 	ctx->src_path = NULL;
 	ctx->src_file = NULL;
 
-	if ((err = vector_init(&ctx->sym_table, sizeof(symbol_t), 0,
-			       (void (*)(void *)) symbol_free)) != OK) {
-		return err;
-	}
+	TRY(vector_init(&ctx->sym_table, sizeof(symbol_t), 0,
+			       (void (*)(void *)) symbol_free));
 
 	ctx->linum = 1;
 	ctx->colnum = 0;
@@ -78,7 +76,7 @@ context_open(context_t *ctx, char *src_path)
 	ctx->src_file = fopen(ctx->src_path, "r");
 	if (!ctx->src_file) {
 		fprintf(stderr, "ERR: Can't open %s, errno = %d\n", ctx->src_path, errno);
-		return ERR_UNK;
+		return ERR_IO;
 	}
 	return OK;
 }
@@ -245,8 +243,7 @@ sexpr_set(sexpr_t *sexpr, string_t *str, lexer_state_t state)
 		break;
 	case IN_INTEGER:
 		sexpr->type = INTEGER;
-		err = str2num(str, (uint32_t *) &sexpr->integer);
-		if (err != OK) { return err; }
+		TRY(str2num(str, (uint32_t *) &sexpr->integer));
 		break;
 	default:
 		break;
@@ -327,12 +324,10 @@ parse(context_t *ctx, sexpr_t *sexpr, int level)
 			if (level != 0) {
 				// First reserve a new slot in the list, assign
 				// it to sexpr temporarly.
-				err = vector_push(list, sexpr);
-				if (err != OK) { return err; }
+				TRY(vector_push(list, sexpr));
 				sexpr = (sexpr_t *) vector_get(list, list->length - 1);
 			}
-			err = sexpr_set(sexpr, &str, old_state);
-			if (err != OK) { return err; }
+			TRY(sexpr_set(sexpr, &str, old_state));
 			if (level == 0) {
 				return OK;
 			} else {
@@ -349,16 +344,13 @@ parse(context_t *ctx, sexpr_t *sexpr, int level)
 		// list and recurse.
 		if (c == '(') {
 			if (level != 0) {
-				err = vector_push(list, sexpr);
-				if (err != OK) { return err; }
+				TRY(vector_push(list, sexpr));
 				sexpr = (sexpr_t *) vector_get(list, list->length - 1);
 			}
 			sexpr->type = LIST;
-			err = vector_init(&sexpr->list, sizeof(sexpr_t), 2,
-					  (void (*)(void *)) sexpr_free);
-			if (err != OK) { return err; }
-			err = parse(ctx, sexpr, level+1);
-			if (err != OK) { return err; }
+			TRY(vector_init(&sexpr->list, sizeof(sexpr_t), 2,
+					  (void (*)(void *)) sexpr_free));
+			TRY(parse(ctx, sexpr, level+1));
 			if (level == 0) {
 				return OK;
 			} else {
@@ -404,8 +396,7 @@ dir_symbol(context_t *ctx, string_t *name)
 	error_t err;
  	symbol_t symbol;
 
-	err = string_set(&symbol.label, name);
-	if (err != OK) { return err; }
+	TRY(string_set(&symbol.label, name));
 	symbol.addr = ctx->addr;
 	return vector_push(&ctx->sym_table, &symbol);
 }
@@ -416,8 +407,7 @@ eval_directive(context_t *ctx, string_t *dir, vector_t *args)
 	error_t err;
 
  	if (string_cmp_c(dir, ".s") == EQUAL) {
-		err = validate_args(args, 1, (sexpr_type_t[]) { SYMBOL });
-		if (err != OK) { return err; }
+		TRY(validate_args(args, 1, (sexpr_type_t[]) { SYMBOL }));
 		return dir_symbol(ctx, &((sexpr_t *) vector_get(args, 0))->symbol);
  	} else {
 		printf("DBG Unknown directive: ");
@@ -465,20 +455,17 @@ eval(context_t *ctx, sexpr_t *sexpr, sexpr_t *res, int pass)
 		if (sexpr->list.length == 0) {
 			break;
 		}
-		err = vector_init(&list, sizeof(sexpr_t), 0,
-				  (void (*)(void *)) sexpr_free);
-		if (err != OK) { goto eval_free; }
+		TRY_GOTO(vector_init(&list, sizeof(sexpr_t), 0,
+				  (void (*)(void *)) sexpr_free), eval_free);
 		for (i = 0; i < sexpr->list.length; i++) {
 			if (i == 0) {
-				err = eval(ctx, vector_get(&sexpr->list, i),
-					   &head, pass);
-				if (err != OK) { goto eval_free; }
+				TRY_GOTO(eval(ctx, vector_get(&sexpr->list, i),
+					   &head, pass), eval_free);
 				if (head.type != SYMBOL) {
 					err = ERR_EVAL_HEADNOSYM;
 				}
 			} else {
-				err = vector_push(&list, &elem);
-				if (err != OK) { goto eval_free; }
+				TRY_GOTO(vector_push(&list, &elem), eval_free);
 				err = eval(ctx, vector_get(&sexpr->list, i),
 					   vector_get(&list, i - 1), pass);
 			}
@@ -611,7 +598,8 @@ main(int argc, char **argv)
 		goto main_free;
 	}
 	src_path = argv[1];
-	if ((err = context_open(&ctx, src_path)) != OK) {
+	err = context_open(&ctx, src_path);
+	if (err != OK) {
 		goto main_free;
 	}
 
