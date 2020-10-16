@@ -13,6 +13,7 @@
     (sb x5 x3 0x23)
 
     (beq x4 x8 0x22)
+    (beq x4 x8 (.r a16))
 
 ; (.s arm-thumb)
 ;     (.equ GPIOC_CRH 0x40011004)

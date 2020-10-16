@@ -27,7 +27,7 @@ enum line_type {
 
 typedef struct {
 	string_t label;
-	size_t addr;
+	uint32_t addr;
 } symbol_t;
 
 void
@@ -40,6 +40,12 @@ cmp_t
 symbol_cmp(symbol_t *a, symbol_t *b)
 {
 	return string_cmp(&a->label, &b->label);
+}
+
+cmp_t
+string_symbol_cmp(string_t *s, symbol_t *symbol)
+{
+	return string_cmp(s, &symbol->label);
 }
 
 typedef struct {
@@ -412,6 +418,22 @@ validate_args(vector_t *args, int length, sexpr_type_t *types)
 	return OK;
 }
 
+error_t eval(context_t *ctx, sexpr_t *sexpr, sexpr_t *res, int pass);
+
+error_t
+eval_args(context_t *ctx, vector_t *args, int pass)
+{
+	error_t err;
+	int i;
+	sexpr_t res;
+
+	for (i = 0; i < args->length; i++) {
+		TRY(eval(ctx, vector_get(args, i),
+			&res, pass));
+		memcpy(vector_get(args, i), &res, sizeof(sexpr_t));
+	}
+	return OK;
+}
 error_t
 dir_symbol(context_t *ctx, string_t *name, int pass)
 {
@@ -433,6 +455,7 @@ eval_directive(context_t *ctx, string_t *dir, vector_t *args, sexpr_t *res, int 
 	res->type = NIL;
 
  	if (string_cmp_c(dir, ".s") == EQUAL) {
+		TRY(eval_args(ctx, args, pass));
 		TRY(validate_args(args, 1, (sexpr_type_t[]) { SYMBOL }));
 		return dir_symbol(ctx, &((sexpr_t *) vector_get(args, 0))->symbol, pass);
  	} else {
@@ -446,6 +469,7 @@ eval_directive(context_t *ctx, string_t *dir, vector_t *args, sexpr_t *res, int 
 error_t
 eval_inst(context_t *ctx, string_t *name, vector_t *args, sexpr_t *res, int pass)
 {
+	error_t err;
 	int i;
 	uint32_t out = 0;
 	uint32_t rd = 0, rs1 = 0, rs2 = 0;
@@ -459,6 +483,7 @@ eval_inst(context_t *ctx, string_t *name, vector_t *args, sexpr_t *res, int pass
 	if (pass != 2) {
 		return OK;
 	}
+	TRY(eval_args(ctx, args, pass));
 
 	// TODO: Replace by binary search
  	for (i = 0; i < instructions_len; i++) {
@@ -530,14 +555,26 @@ eval_fn(context_t *ctx, string_t *fn, vector_t *args, sexpr_t *res, int pass)
 }
 
 error_t
-eval_symbol(context_t *ctx, string_t *sym, sexpr_t *res, int pass)
+eval_symbol(context_t *ctx, string_t *s, sexpr_t *res, int pass)
 {
 	register_alias_t *reg;
+	symbol_t *sym;
+
+	// Search the symbol in the register table
 	reg = (register_alias_t *) vector_bin_search((vector_t *) &registers,
-		(cmp_t (*) (void *, void *)) register_alias_cmp, sym);
+		(cmp_t (*)(void *, void *)) string_register_alias_cmp, s);
 	if (reg != NULL) {
 		res->type = INTEGER;
 		res->integer = reg->value;
+		return OK;
+	}
+
+	// Search the symbol in the symbol table (labels) // TODO: Maybe rename symbols to labels
+	sym = (symbol_t *) vector_bin_search(&ctx->sym_table,
+		(cmp_t (*)(void *, void *)) string_symbol_cmp, s);
+	if (sym != NULL) {
+		res->type = INTEGER;
+		res->integer = sym->addr;
 		return OK;
 	}
 	res->type = NIL;
@@ -549,12 +586,10 @@ eval(context_t *ctx, sexpr_t *sexpr, sexpr_t *res, int pass)
 {
 	error_t err;
 	sexpr_t *head;
-	sexpr_t elem;
-	vector_t list;
+	vector_t args;
+	// sexpr_t *arg;
 	char c;
-	int i;
-
-	sexpr_init(&elem);
+	// int i;
 
 	switch (sexpr->type) {
 	case LIST:
@@ -563,29 +598,31 @@ eval(context_t *ctx, sexpr_t *sexpr, sexpr_t *res, int pass)
 			res->type = NIL;
 			return OK;
 		}
-		TRY_GOTO(vector_init(&list, sizeof(sexpr_t), 0,
-				  (void (*)(void *)) sexpr_free), eval_free);
-		for (i = 0; i < sexpr->list.length; i++) {
-			if (i == 0) {
-				head = (sexpr_t *) vector_get(&sexpr->list, i);
-				if (head->type != SYMBOL) {
-					err = ERR_EVAL_HEADNOSYM;
-					goto eval_free;
-				}
-			} else {
-				TRY_GOTO(vector_push(&list, &elem), eval_free);
-				TRY_GOTO(eval(ctx, vector_get(&sexpr->list, i),
-			   		vector_get(&list, i - 1), pass), eval_free);
-			}
+		// TRY_GOTO(vector_init(&args, sizeof(sexpr_t), 0,
+		// 		  (void (*)(void *)) sexpr_free), eval_free);
+		head = (sexpr_t *) vector_get(&sexpr->list, 0);
+		if (head->type != SYMBOL) {
+			err = ERR_EVAL_HEADNOSYM;
+			goto eval_free;
 		}
+		memcpy(&args, &sexpr->list, sizeof(vector_t));
+		args.data += args.elem_size;
+		args.length--;
+		// for (i = 1; i < sexpr->list.length; i++) {
+		// 	arg = vector_get(&sexpr->list, i);
+		// 	TRY_GOTO(vector_push(&args, arg), eval_free);
+		// 	arg->type = NIL;
+		// 	// TRY_GOTO(eval(ctx, vector_get(&sexpr->list, i),
+		// 	// 	vector_get(&list, i - 1), pass), eval_free);
+		// }
 
 		c = head->symbol.data[0];
 		if (c == '.') {
-			err = eval_directive(ctx, &head->symbol, &list, res, pass);
+			err = eval_directive(ctx, &head->symbol, &args, res, pass);
 		} else if (is_alpha(c)) {
-			err = eval_inst(ctx, &head->symbol, &list, res, pass);
+			err = eval_inst(ctx, &head->symbol, &args, res, pass);
 		} else {
-			err = eval_fn(ctx, &head->symbol, &list, res, pass);
+			err = eval_fn(ctx, &head->symbol, &args, res, pass);
 		}
 		goto eval_free;
 	case SYMBOL:
@@ -609,8 +646,8 @@ eval(context_t *ctx, sexpr_t *sexpr, sexpr_t *res, int pass)
 	}
 
 eval_free:
-	sexpr_free(head);
-	vector_free(&list);
+	// sexpr_free(head);
+	// vector_free(&args);
 	sexpr_free(sexpr);
 	return err;
 }
@@ -622,7 +659,7 @@ dbg_print_sym_table(vector_t *sym_table)
 	int i;
 	for (i = 0; i < sym_table->length; i++) {
 		sym_ref = vector_get(sym_table, i);
-		printf("%d: [%ld] ", i, sym_ref->addr);
+		printf("%d: [%d] ", i, sym_ref->addr);
 		for (int j = 0; j < sym_ref->label.length; j++) {
 			printf("%c", sym_ref->label.data[j]);
 		}
@@ -734,7 +771,7 @@ main(int argc, char **argv)
 			err = 0;
 			break;
 		} else if (err != OK) {
-			error(&ctx, err, "parse()");
+			error(&ctx, err, "pass 1 parse()");
 			goto main_free;
 		}
 		sexpr_init(&res);
@@ -743,7 +780,7 @@ main(int argc, char **argv)
 
 		err = eval(&ctx, &sexpr, &res, 1);
 		if (err != OK) {
-			error(&ctx, err, "eval()");
+			error(&ctx, err, "pass 1 eval()");
 			err = -1;
 			goto main_free;
 		}
@@ -785,7 +822,7 @@ main(int argc, char **argv)
 			err = 0;
 			break;
 		} else if (err != OK) {
-			error(&ctx, err, "parse()");
+			error(&ctx, err, "pass 2 parse()");
 			goto main_free;
 		}
 		sexpr_init(&res);
@@ -794,7 +831,7 @@ main(int argc, char **argv)
 
 		err = eval(&ctx, &sexpr, &res, 2);
 		if (err != OK) {
-			error(&ctx, err, "eval()");
+			error(&ctx, err, "pass 2 eval()");
 			err = -1;
 			goto main_free;
 		}

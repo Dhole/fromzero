@@ -83,7 +83,7 @@ const vector_t registers = {
 };
 
 cmp_t
-register_alias_cmp(string_t *key, register_alias_t *reg_alias)
+string_register_alias_cmp(string_t *key, register_alias_t *reg_alias)
 {
     return string_cmp_c(key, reg_alias->name);
 }

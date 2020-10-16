@@ -16,7 +16,7 @@ typedef struct {
 // extern const int _registers_len;
 // extern const register_alias_t _registers[];
 extern const vector_t registers;
-cmp_t register_alias_cmp(string_t *key, register_alias_t *reg_alias);
+cmp_t string_register_alias_cmp(string_t *key, register_alias_t *reg_alias);
 
 typedef enum {
     REG,
