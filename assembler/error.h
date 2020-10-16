@@ -13,6 +13,12 @@
         goto label; \
     }
 
+#define TRY_BREAK(expr) \
+    err = expr; \
+    if (err != OK) { \
+        break; \
+    }
+
 typedef enum error_t {
     OK = 0,
     ERR_NO_MEM = 1,
@@ -29,6 +35,10 @@ typedef enum error_t {
     ERR_EVAL_ARGSLEN = 12,
     ERR_EVAL_BADTYPE = 13,
     ERR_IO = 14,
+    ERR_MAX_STR = 15,
+    ERR_INST_LEN = 16,
+    ERR_SYM_NOT_DEF = 17,
+    ERR_NEG = 18,
 } error_t;
 
 extern const char *error_string[];

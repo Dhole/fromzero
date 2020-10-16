@@ -136,7 +136,9 @@ is_alpha(char c)
 
 typedef enum {
 	LIST,
+	QUOTE_LIST,
 	SYMBOL,
+	QUOTE_SYMBOL,
 	STRING,
 	INTEGER,
 	NIL,
@@ -163,6 +165,7 @@ sexpr_free(sexpr_t *sexpr)
 {
 	switch (sexpr->type) {
 	case SYMBOL:
+	case QUOTE_SYMBOL:
 		string_free(&sexpr->symbol);
 		break;
 	case STRING:
@@ -173,6 +176,7 @@ sexpr_free(sexpr_t *sexpr)
 	case NIL:
 		break;
 	case LIST:
+	case QUOTE_LIST:
 		vector_free(&sexpr->list);
 		break;
 	}
@@ -185,6 +189,8 @@ dbg_print_sexpr(sexpr_t *sexpr)
 	int i;
 	sexpr_t *sexpr0;
 	switch (sexpr->type) {
+	case QUOTE_SYMBOL:
+		printf("'");
 	case SYMBOL:
 		printf("sym:");
 		string_write(&sexpr->symbol, stdout);
@@ -201,6 +207,8 @@ dbg_print_sexpr(sexpr_t *sexpr)
 	case NIL:
 		printf("nil ");
 		break;
+	case QUOTE_LIST:
+		printf("'");
 	case LIST:
 		printf("(");
 		for (i = 0; i < sexpr->list.length; i++) {
@@ -223,7 +231,7 @@ typedef enum {
 } lexer_state_t;
 
 error_t
-sexpr_set(sexpr_t *sexpr, string_t *str, lexer_state_t state)
+sexpr_set(sexpr_t *sexpr, string_t *str, lexer_state_t state, bool quote)
 {
 	error_t err;
 	assert(str->length != 0);
@@ -234,7 +242,11 @@ sexpr_set(sexpr_t *sexpr, string_t *str, lexer_state_t state)
 
 	switch (state) {
 	case IN_SYMBOL:
-		sexpr->type = SYMBOL;
+		if (quote) {
+			sexpr->type = QUOTE_SYMBOL;
+		} else {
+			sexpr->type = SYMBOL;
+		}
 		string_set(&sexpr->symbol, str);
 		break;
 	case IN_STRING:
@@ -256,6 +268,7 @@ parse(context_t *ctx, sexpr_t *sexpr, int level)
 {
 	error_t err;
 	bool str_scape = false;
+	bool quote = false;
 	lexer_state_t old_state = IN_WS, state = IN_WS;
 	char c;
 	// sexpr_t *_sexpr = sexpr;
@@ -282,6 +295,7 @@ parse(context_t *ctx, sexpr_t *sexpr, int level)
 				state = IN_WS;
 			}
 		} else if (state == IN_COMMENT) {
+			str.length = 0;
 		} else if (state == IN_STRING) {
 			if (str_scape) {
 				str_scape = false;
@@ -293,6 +307,8 @@ parse(context_t *ctx, sexpr_t *sexpr, int level)
 			} else if (c == '\\') {
 				str_scape = true;
 			}
+		} else if (c == '\'') {
+			quote = true;
 		} else if (c == ';') {
 			state = IN_COMMENT;
 		} else if (c == '(' || c == ')'){
@@ -327,7 +343,8 @@ parse(context_t *ctx, sexpr_t *sexpr, int level)
 				TRY(vector_push(list, sexpr));
 				sexpr = (sexpr_t *) vector_get(list, list->length - 1);
 			}
-			TRY(sexpr_set(sexpr, &str, old_state));
+			TRY(sexpr_set(sexpr, &str, old_state, quote));
+			quote = false;
 			if (level == 0) {
 				return OK;
 			} else {
@@ -347,7 +364,12 @@ parse(context_t *ctx, sexpr_t *sexpr, int level)
 				TRY(vector_push(list, sexpr));
 				sexpr = (sexpr_t *) vector_get(list, list->length - 1);
 			}
-			sexpr->type = LIST;
+			if (quote) {
+				sexpr->type = QUOTE_LIST;
+			} else {
+				sexpr->type = LIST;
+			}
+			quote = false;
 			TRY(vector_init(&sexpr->list, sizeof(sexpr_t), 2,
 					  (void (*)(void *)) sexpr_free));
 			TRY(parse(ctx, sexpr, level+1));
@@ -367,7 +389,7 @@ parse_do:
 		str.length++;
 		// If str is full, grow its capacity
 		if (str.length == MAX_COL) {
-			return ERR_UNK;
+			return ERR_MAX_STR;
 		}
 	}
 	return ERR_EOF;
@@ -391,24 +413,28 @@ validate_args(vector_t *args, int length, sexpr_type_t *types)
 }
 
 error_t
-dir_symbol(context_t *ctx, string_t *name)
+dir_symbol(context_t *ctx, string_t *name, int pass)
 {
 	error_t err;
  	symbol_t symbol;
 
+	if (pass != 1) {
+		return OK;
+	}
 	TRY(string_set(&symbol.label, name));
 	symbol.addr = ctx->addr;
 	return vector_push(&ctx->sym_table, &symbol);
 }
 
 error_t
-eval_directive(context_t *ctx, string_t *dir, vector_t *args)
+eval_directive(context_t *ctx, string_t *dir, vector_t *args, sexpr_t *res, int pass)
 {
 	error_t err;
+	res->type = NIL;
 
  	if (string_cmp_c(dir, ".s") == EQUAL) {
 		TRY(validate_args(args, 1, (sexpr_type_t[]) { SYMBOL }));
-		return dir_symbol(ctx, &((sexpr_t *) vector_get(args, 0))->symbol);
+		return dir_symbol(ctx, &((sexpr_t *) vector_get(args, 0))->symbol, pass);
  	} else {
 		printf("DBG Unknown directive: ");
 		string_write(dir, stdout);
@@ -418,31 +444,111 @@ eval_directive(context_t *ctx, string_t *dir, vector_t *args)
 }
 
 error_t
-eval_inst(context_t *ctx, string_t *inst, vector_t *args)
+eval_inst(context_t *ctx, string_t *name, vector_t *args, sexpr_t *res, int pass)
 {
-	printf("DBG Unknown inst: ");
-	string_write(inst, stdout);
-	printf("\n");
+	int i;
+	uint32_t out = 0;
+	uint32_t rd = 0, rs1 = 0, rs2 = 0;
+	int32_t imm = 0;
+	sexpr_t *arg;
+	operand_t *op;
+ 	instruction_t *inst;
+	res->type = NIL;
 
 	ctx->addr += 4;
+	if (pass != 2) {
+		return OK;
+	}
+
+	// TODO: Replace by binary search
+ 	for (i = 0; i < instructions_len; i++) {
+ 		inst = (instruction_t *) &instructions[i];
+ 		if (string_cmp_c(name, inst->name) == EQUAL) {
+ 			printf("%s %d %d\n", inst->name, ctx->linum, i);
+ 			break;
+ 		}
+ 	}
+	if (i == instructions_len) {
+		printf("DBG Unknown inst: ");
+		string_write(name, stdout);
+		printf("\n");
+		return OK;
+	}
+	if (args->length != inst->ops_len) {
+		return ERR_INST_LEN;
+	}
+	for (i = 0; i < args->length; i++) {
+		arg = vector_get(args, i);
+		op = &inst->ops[i];
+		switch (op->type) {
+		case REG:
+			switch (op->reg_opt) {
+			case RD: rd = arg->integer; break;
+			case RS1: rs1 = arg->integer; break;
+			case RS2: rs2 = arg->integer; break;
+			}
+			break;
+		case IMM:
+			imm = arg->integer;
+			if (op->imm_opt == ABS && imm < 0) {
+				return ERR_NEG;
+			}
+			break;
+		}
+	}
+
+	out |= inst->opcode;
+	out |= inst->funct3 << 12;
+	switch (inst->fmt) {
+	case R_TYPE:
+		out |= rd << 7;
+		out |= rs1 << 15;
+		out |= rs2 << 20;
+		out |= inst->funct7 << 25;
+	default:
+		break;
+	}
+
+	printf("inst: %02x %02x %02x %02x\n",
+	       (out & (0xff << (0 * 8))) >> (0 * 8),
+	       (out & (0xff << (1 * 8))) >> (1 * 8),
+	       (out & (0xff << (2 * 8))) >> (2 * 8),
+	       (out & (0xff << (3 * 8))) >> (3 * 8)
+	       );
 
 	return OK;
 }
 
 error_t
-eval_fn(context_t *ctx, string_t *fn, vector_t *args)
+eval_fn(context_t *ctx, string_t *fn, vector_t *args, sexpr_t *res, int pass)
 {
 	printf("DBG Unknown fn: ");
 	string_write(fn, stdout);
 	printf("\n");
+	res->type = NIL;
 	return OK;
+}
+
+error_t
+eval_symbol(context_t *ctx, string_t *sym, sexpr_t *res, int pass)
+{
+	register_alias_t *reg;
+	reg = (register_alias_t *) vector_bin_search((vector_t *) &registers,
+		(cmp_t (*) (void *, void *)) register_alias_cmp, sym);
+	if (reg != NULL) {
+		res->type = INTEGER;
+		res->integer = reg->value;
+		return OK;
+	}
+	res->type = NIL;
+	return ERR_SYM_NOT_DEF;
 }
 
 error_t
 eval(context_t *ctx, sexpr_t *sexpr, sexpr_t *res, int pass)
 {
 	error_t err;
-	sexpr_t head;
+	sexpr_t *head;
 	sexpr_t elem;
 	vector_t list;
 	char c;
@@ -453,46 +559,59 @@ eval(context_t *ctx, sexpr_t *sexpr, sexpr_t *res, int pass)
 	switch (sexpr->type) {
 	case LIST:
 		if (sexpr->list.length == 0) {
-			break;
+			sexpr_free(sexpr);
+			res->type = NIL;
+			return OK;
 		}
 		TRY_GOTO(vector_init(&list, sizeof(sexpr_t), 0,
 				  (void (*)(void *)) sexpr_free), eval_free);
 		for (i = 0; i < sexpr->list.length; i++) {
 			if (i == 0) {
-				TRY_GOTO(eval(ctx, vector_get(&sexpr->list, i),
-					   &head, pass), eval_free);
-				if (head.type != SYMBOL) {
+				head = (sexpr_t *) vector_get(&sexpr->list, i);
+				if (head->type != SYMBOL) {
 					err = ERR_EVAL_HEADNOSYM;
+					goto eval_free;
 				}
 			} else {
 				TRY_GOTO(vector_push(&list, &elem), eval_free);
-				err = eval(ctx, vector_get(&sexpr->list, i),
-					   vector_get(&list, i - 1), pass);
+				TRY_GOTO(eval(ctx, vector_get(&sexpr->list, i),
+			   		vector_get(&list, i - 1), pass), eval_free);
 			}
-			if (err != OK) { goto eval_free; }
 		}
 
-		c = head.symbol.data[0];
+		c = head->symbol.data[0];
 		if (c == '.') {
-			err = eval_directive(ctx, &head.symbol, &list);
+			err = eval_directive(ctx, &head->symbol, &list, res, pass);
 		} else if (is_alpha(c)) {
-			err = eval_inst(ctx, &head.symbol, &list);
+			err = eval_inst(ctx, &head->symbol, &list, res, pass);
 		} else {
-			err = eval_fn(ctx, &head.symbol, &list);
+			err = eval_fn(ctx, &head->symbol, &list, res, pass);
 		}
 		goto eval_free;
+	case SYMBOL:
+		err = eval_symbol(ctx, &sexpr->symbol, res, pass);
+		sexpr_free(sexpr);
+		return err;
 	default:
-		break;
+		switch (sexpr->type) {
+		case QUOTE_LIST:
+			sexpr->type = LIST;
+			break;
+		case QUOTE_SYMBOL:
+			sexpr->type = SYMBOL;
+			break;
+		default:
+			break;
+		}
+		memcpy(res, sexpr, sizeof(sexpr_t));
+		sexpr->type = NIL;
+		return OK;
 	}
-	memcpy(res, sexpr, sizeof(sexpr_t));
-	sexpr->type = NIL;
-	return OK;
 
 eval_free:
-	sexpr_free(sexpr);
-	sexpr_free(&head);
+	sexpr_free(head);
 	vector_free(&list);
-	sexpr->type = NIL; // TMP
+	sexpr_free(sexpr);
 	return err;
 }
 
@@ -628,7 +747,6 @@ main(int argc, char **argv)
 			err = -1;
 			goto main_free;
 		}
-		sexpr_free(&sexpr); // TMP
 		sexpr_free(&res);
 
 	}
@@ -660,16 +778,29 @@ main(int argc, char **argv)
 		err = -1;
 		goto main_free;
 	}
-	// while (parse_line_file(&ctx, &parsed_line)) {
-	// 	if (parsed_line.type == LINE_OP) {
-	// 		if (assemble(&ctx, &parsed_line) != 0) {
-	// 			fprintf(stderr, "ERR: Assemble line %d\n", ctx.linum-1);
-	// 			err = -1;
-	// 			goto main_free;
-	// 		}
-	// 		ctx.addr += 2;
-	// 	}
-	// }
+
+	while (true) {
+		err = parse(&ctx, &sexpr, 0);
+		if (err == ERR_EOF) {
+			err = 0;
+			break;
+		} else if (err != OK) {
+			error(&ctx, err, "parse()");
+			goto main_free;
+		}
+		sexpr_init(&res);
+		dbg_print_sexpr(&sexpr);
+		printf("\n");
+
+		err = eval(&ctx, &sexpr, &res, 2);
+		if (err != OK) {
+			error(&ctx, err, "eval()");
+			err = -1;
+			goto main_free;
+		}
+		sexpr_free(&res);
+
+	}
 
 main_free:
 	context_free(&ctx);

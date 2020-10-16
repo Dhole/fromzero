@@ -5,7 +5,18 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
-// Parser
+#include "vector.h"
+#include "string.h"
+
+typedef struct {
+    char *name;
+    int value;
+} register_alias_t;
+
+// extern const int _registers_len;
+// extern const register_alias_t _registers[];
+extern const vector_t registers;
+cmp_t register_alias_cmp(string_t *key, register_alias_t *reg_alias);
 
 typedef enum {
     REG,
@@ -39,22 +50,23 @@ typedef enum {
 } inst_fmt_t;
 
 typedef struct {
-    char *inst;
+    char *name;
     inst_fmt_t fmt;
     uint8_t ops_len;
     operand_t *ops;
+    uint8_t opcode;
+    uint8_t funct3;
+    uint8_t funct7;
 } instruction_t;
 
 extern const int instructions_len;
 extern const instruction_t instructions[];
 
-// Parsed
-
-typedef struct {
-    uint8_t rd;
-    uint8_t rs1;
-    uint8_t rs2;
-    uint32_t imm;
-} operands_t;
+// typedef struct {
+//     uint8_t rd;
+//     uint8_t rs1;
+//     uint8_t rs2;
+//     uint32_t imm;
+// } operand_t;
 
 #endif // INSTRUCTIONS_H

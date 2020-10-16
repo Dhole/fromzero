@@ -14,4 +14,8 @@ const char *error_string[] = {
     "incorrect number of args in list", // 12
     "incorrect type of args in list", // 13
     "file error", // 14
+    "maximum string length", // 15
+    "incorrect number of args in instruction", // 16
+    "symbol not defined", // 17
+    "unexpected negative integer", // 18
 };
