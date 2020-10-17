@@ -88,31 +88,131 @@ string_register_alias_cmp(string_t *key, register_alias_t *reg_alias)
     return string_cmp_c(key, reg_alias->name);
 }
 
-const int instructions_len = 7;
+const int instructions_len = 39;
 const instruction_t instructions[] = {
-    {name: "add", fmt: R_TYPE, opcode: 0b0110011, funct3: 0x0, funct7: 0x00, ops_len: 3, ops: (operand_t[]) {
+    {name: "add",  fmt: R_TYPE, opcode: 0b0110011, funct3: 0x0, funct7: 0x00, ops_len: 3, ops: (operand_t[]) {
 	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: REG, reg_opt: RS2}
     }},
-    {name: "sub", fmt: R_TYPE, ops_len: 3, ops: (operand_t[]) {
+    {name: "sub",  fmt: R_TYPE, opcode: 0b0110011, funct3: 0x0, funct7: 0x20, ops_len: 3, ops: (operand_t[]) {
 	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: REG, reg_opt: RS2}
     }},
-    {name: "xor", fmt: R_TYPE, ops_len: 3, ops: (operand_t[]) {
+    {name: "xor",  fmt: R_TYPE, opcode: 0b0110011, funct3: 0x4, funct7: 0x00, ops_len: 3, ops: (operand_t[]) {
 	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: REG, reg_opt: RS2}
     }},
-    // ...
-    {name: "addi", fmt: I_TYPE, ops_len: 3, ops: (operand_t[]) {
+    {name: "or",   fmt: R_TYPE, opcode: 0b0110011, funct3: 0x6, funct7: 0x00, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: REG, reg_opt: RS2}
+    }},
+    {name: "and",  fmt: R_TYPE, opcode: 0b0110011, funct3: 0x7, funct7: 0x00, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: REG, reg_opt: RS2}
+    }},
+    {name: "sll",  fmt: R_TYPE, opcode: 0b0110011, funct3: 0x1, funct7: 0x00, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: REG, reg_opt: RS2}
+    }},
+    {name: "srl",  fmt: R_TYPE, opcode: 0b0110011, funct3: 0x5, funct7: 0x00, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: REG, reg_opt: RS2}
+    }},
+    {name: "sra",  fmt: R_TYPE, opcode: 0b0110011, funct3: 0x5, funct7: 0x20, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: REG, reg_opt: RS2}
+    }},
+    {name: "slt",  fmt: R_TYPE, opcode: 0b0110011, funct3: 0x2, funct7: 0x00, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: REG, reg_opt: RS2}
+    }},
+    {name: "sltu", fmt: R_TYPE, opcode: 0b0110011, funct3: 0x3, funct7: 0x00, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: REG, reg_opt: RS2}
+    }},
+
+    {name: "addi",  fmt: I_TYPE, opcode: 0b0010011, funct3: 0x0, ops_len: 3, ops: (operand_t[]) {
 	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: IMM, imm_opt: SIG}
     }},
-    // ...
-    {name: "lb", fmt: I_TYPE, ops_len: 3, ops: (operand_t[]) {
+    {name: "xori",  fmt: I_TYPE, opcode: 0b0010011, funct3: 0x4, ops_len: 3, ops: (operand_t[]) {
 	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: IMM, imm_opt: SIG}
     }},
-    // ...
-    {name: "sb", fmt: S_TYPE, ops_len: 3, ops: (operand_t[]) {
+    {name: "ori",   fmt: I_TYPE, opcode: 0b0010011, funct3: 0x6, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: IMM, imm_opt: SIG}
+    }},
+    {name: "andi",  fmt: I_TYPE, opcode: 0b0010011, funct3: 0x7, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: IMM, imm_opt: SIG}
+    }},
+    {name: "slli",  fmt: I_TYPE, opcode: 0b0010011, funct3: 0x1, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: IMM, imm_opt: IMM_5_11_00}
+    }},
+    {name: "srli",  fmt: I_TYPE, opcode: 0b0010011, funct3: 0x5, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: IMM, imm_opt: IMM_5_11_00}
+    }},
+    {name: "srai",  fmt: I_TYPE, opcode: 0b0010011, funct3: 0x5, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: IMM, imm_opt: IMM_5_11_20}
+    }},
+    {name: "slti",  fmt: I_TYPE, opcode: 0b0010011, funct3: 0x2, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: IMM, imm_opt: SIG}
+    }},
+    {name: "sltiu", fmt: I_TYPE, opcode: 0b0010011, funct3: 0x3, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: IMM, imm_opt: SIG}
+    }},
+
+    {name: "lb",    fmt: I_TYPE, opcode: 0b0000011, funct3: 0x0, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: IMM, imm_opt: SIG}
+    }},
+    {name: "lh",    fmt: I_TYPE, opcode: 0b0000011, funct3: 0x1, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: IMM, imm_opt: SIG}
+    }},
+    {name: "lw",    fmt: I_TYPE, opcode: 0b0000011, funct3: 0x2, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: IMM, imm_opt: SIG}
+    }},
+    {name: "lbu",   fmt: I_TYPE, opcode: 0b0000011, funct3: 0x4, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: IMM, imm_opt: SIG}
+    }},
+    {name: "lhu",   fmt: I_TYPE, opcode: 0b0000011, funct3: 0x5, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: IMM, imm_opt: SIG}
+    }},
+
+    {name: "sb",    fmt: S_TYPE, opcode: 0b0100011, funct3: 0x0, ops_len: 3, ops: (operand_t[]) {
 	{type: REG, reg_opt: RS2}, {type: REG, reg_opt: RS1}, {type: IMM, imm_opt: SIG}
     }},
-    // ...
-    {name: "beq", fmt: B_TYPE, opcode: 0b1100011, funct3: 0x0, ops_len: 3, ops: (operand_t[]) {
+    {name: "sh",    fmt: S_TYPE, opcode: 0b0100011, funct3: 0x1, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RS2}, {type: REG, reg_opt: RS1}, {type: IMM, imm_opt: SIG}
+    }},
+    {name: "sw",    fmt: S_TYPE, opcode: 0b0100011, funct3: 0x2, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RS2}, {type: REG, reg_opt: RS1}, {type: IMM, imm_opt: SIG}
+    }},
+
+    {name: "beq",   fmt: B_TYPE, opcode: 0b1100011, funct3: 0x0, ops_len: 3, ops: (operand_t[]) {
 	{type: REG, reg_opt: RS1}, {type: REG, reg_opt: RS2}, {type: IMM, imm_opt: SIG}
+    }},
+    {name: "bne",   fmt: B_TYPE, opcode: 0b1100011, funct3: 0x1, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RS1}, {type: REG, reg_opt: RS2}, {type: IMM, imm_opt: SIG}
+    }},
+    {name: "blt",   fmt: B_TYPE, opcode: 0b1100011, funct3: 0x4, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RS1}, {type: REG, reg_opt: RS2}, {type: IMM, imm_opt: SIG}
+    }},
+    {name: "bge",   fmt: B_TYPE, opcode: 0b1100011, funct3: 0x5, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RS1}, {type: REG, reg_opt: RS2}, {type: IMM, imm_opt: SIG}
+    }},
+    {name: "bltu",  fmt: B_TYPE, opcode: 0b1100011, funct3: 0x6, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RS1}, {type: REG, reg_opt: RS2}, {type: IMM, imm_opt: SIG}
+    }},
+    {name: "bgeu",  fmt: B_TYPE, opcode: 0b1100011, funct3: 0x7, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RS1}, {type: REG, reg_opt: RS2}, {type: IMM, imm_opt: SIG}
+    }},
+
+    {name: "jal",   fmt: J_TYPE, opcode: 0b1101111, ops_len: 2, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: IMM, imm_opt: SIG}
+    }},
+
+    {name: "jalr",  fmt: I_TYPE, opcode: 0b1100111, funct3: 0x0, ops_len: 2, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: IMM, imm_opt: SIG}
+    }},
+
+    {name: "lui",   fmt: U_TYPE, opcode: 0b0110111, ops_len: 2, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: IMM, imm_opt: SIG}
+    }},
+    {name: "auipc", fmt: U_TYPE, opcode: 0b0010111, ops_len: 2, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: IMM, imm_opt: SIG}
+    }},
+
+    {name: "ecall", fmt: I_TYPE, opcode: 0b1110011, ops_len: -1, ops: (operand_t[]) {
+	{type: IMM, imm_opt: IMM_0}
+    }},
+    {name: "ebreak",fmt: I_TYPE, opcode: 0b1110011, ops_len: -1, ops: (operand_t[]) {
+	{type: IMM, imm_opt: IMM_1}
     }},
 };

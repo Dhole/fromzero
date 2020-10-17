@@ -18,4 +18,6 @@ const char *error_string[] = {
     "incorrect number of args in instruction", // 16
     "symbol not defined", // 17
     "unexpected negative integer", // 18
+    "imm out of range", // 19
+    "unknown instruction", // 20
 };

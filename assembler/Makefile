@@ -30,7 +30,7 @@ main: $(OBJ) main.c
 	$(CC) -o $@ $^ $(CFLAGS)
 
 main_valgrind: main
-	valgrind $(VALGRIND_OPTS) ./main $(FILE)
+	valgrind $(VALGRIND_OPTS) ./main $(SRC) $(OUT)
 
 clean:
 	rm *.o test_* main

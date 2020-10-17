@@ -14,3 +14,15 @@ ARMv7-M Architecutre Reference Manual: https://static.docs.arm.com/ddi0403/e/DDI
 
 - ARM Cortex-M3 implements the ARMv7-M ISA
 - ARMv7-M is a superset of ARMv6-M
+
+## RISC-V development notes
+
+Assembly test:
+```
+make main_valgrind SRC=test-rv32i.a.asm OUT=test-rv32i.a.bin
+```
+
+Disassembly test:
+```
+echo 'pd 20' | r2 -a riscv -b 32 -m 0 test-rv32i.a.bin
+```

@@ -6,6 +6,8 @@
     (xor x4 x12 x15)
 
     (addi x1 x2 0x12)
+    (slli x1 x2 4)
+    (srai x1 x2 5)
 
 ($ 'a16)
     (lb x1 x2 0x14)
@@ -14,6 +16,9 @@
 
     (beq tp s0 0x22)
     (beq x4 x8 (@ a16))
+
+    (ecall)
+    (ebreak)
 
 ; (.s arm-thumb)
 ;     (.equ GPIOC_CRH 0x40011004)

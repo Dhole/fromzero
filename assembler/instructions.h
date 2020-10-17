@@ -26,6 +26,10 @@ typedef enum {
 typedef enum {
     ABS,
     SIG,
+    IMM_0,
+    IMM_1,
+    IMM_5_11_00,
+    IMM_5_11_20,
 } imm_opt_t;
 
 typedef enum {
@@ -52,7 +56,7 @@ typedef enum {
 typedef struct {
     char *name;
     inst_fmt_t fmt;
-    uint8_t ops_len;
+    int8_t ops_len;
     operand_t *ops;
     uint8_t opcode;
     uint8_t funct3;

@@ -3,3 +3,4 @@ test_*
 vgcore.*
 *.o
 main
+*.bin

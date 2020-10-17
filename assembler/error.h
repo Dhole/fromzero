@@ -39,6 +39,8 @@ typedef enum error_t {
     ERR_INST_LEN = 16,
     ERR_SYM_NOT_DEF = 17,
     ERR_NEG = 18,
+    ERR_IMM_OUT_RANGE = 19,
+    ERR_INST_UNK = 20,
 } error_t;
 
 extern const char *error_string[];

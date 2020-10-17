@@ -51,6 +51,8 @@ string_symbol_cmp(string_t *s, symbol_t *symbol)
 typedef struct {
 	char *src_path;
 	FILE *src_file;
+	char *out_path;
+	FILE *out_file;
 	int linum;
 	int colnum;
 	char str[MAX_COL]; // Buffer to hold a temporary string
@@ -64,6 +66,8 @@ context_init(context_t *ctx)
 	error_t err;
 	ctx->src_path = NULL;
 	ctx->src_file = NULL;
+	ctx->out_path = NULL;
+	ctx->out_file = NULL;
 
 	TRY(vector_init(&ctx->sym_table, sizeof(symbol_t), 0,
 			       (void (*)(void *)) symbol_free));
@@ -76,19 +80,25 @@ context_init(context_t *ctx)
 }
 
 error_t
-context_open(context_t *ctx, char *src_path)
+context_open(context_t *ctx, char *src_path, char *out_path)
 {
 	ctx->src_path = src_path;
 	ctx->src_file = fopen(ctx->src_path, "r");
 	if (!ctx->src_file) {
-		fprintf(stderr, "ERR: Can't open %s, errno = %d\n", ctx->src_path, errno);
+		fprintf(stderr, "ERR: Can't read open %s, errno = %d\n", ctx->src_path, errno);
+		return ERR_IO;
+	}
+	ctx->out_path = out_path;
+	ctx->out_file = fopen(ctx->out_path, "wb");
+	if (!ctx->out_file) {
+		fprintf(stderr, "ERR: Can't write open %s, errno = %d\n", ctx->out_path, errno);
 		return ERR_IO;
 	}
 	return OK;
 }
 
 int
-context_reset_file(context_t *ctx)
+context_reset_src_file(context_t *ctx)
 {
 	ctx->linum = 0;
 	ctx->addr = 0;
@@ -102,6 +112,10 @@ context_free(context_t *ctx)
 	if (ctx->src_file != NULL) {
 		fclose(ctx->src_file);
 		ctx->src_file = NULL;
+	}
+	if (ctx->out_file != NULL) {
+		fclose(ctx->out_file);
+		ctx->out_file = NULL;
 	}
 }
 
@@ -463,6 +477,8 @@ eval_inst(context_t *ctx, string_t *name, vector_t *args, sexpr_t *res, int pass
 	error_t err;
 	int i;
 	uint32_t out = 0;
+	char word[4];
+	size_t ret;
 	uint32_t rd = 0, rs1 = 0, rs2 = 0;
 	int32_t imm = 0;
 	sexpr_t *arg;
@@ -480,7 +496,7 @@ eval_inst(context_t *ctx, string_t *name, vector_t *args, sexpr_t *res, int pass
  	for (i = 0; i < instructions_len; i++) {
  		inst = (instruction_t *) &instructions[i];
  		if (string_cmp_c(name, inst->name) == EQUAL) {
- 			printf("%s %d %d\n", inst->name, ctx->linum, i);
+ 			// printf("%s %d %d\n", inst->name, ctx->linum, i);
  			break;
  		}
  	}
@@ -488,10 +504,20 @@ eval_inst(context_t *ctx, string_t *name, vector_t *args, sexpr_t *res, int pass
 		printf("DBG Unknown inst: ");
 		string_write(name, stdout);
 		printf("\n");
-		return OK;
+		return ERR_INST_UNK;
 	}
 	if (args->length != inst->ops_len) {
-		return ERR_INST_LEN;
+		// We use ops_len == -1 to denote that the argument is implicit
+		// (imm in ecall and ebreak)
+		if (!(args->length == 0 && inst->ops_len == -1)) {
+			return ERR_INST_LEN;
+		}
+	}
+	if (inst->ops_len == -1) {
+		if (inst->ops[0].imm_opt == IMM_1) {
+			imm = 0x1;
+		}
+		// If imm_opt == IMM_0, imm = 0x0
 	}
 	for (i = 0; i < args->length; i++) {
 		arg = vector_get(args, i);
@@ -509,10 +535,34 @@ eval_inst(context_t *ctx, string_t *name, vector_t *args, sexpr_t *res, int pass
 			if (op->imm_opt == ABS && imm < 0) {
 				return ERR_NEG;
 			}
+			if (op->imm_opt == IMM_5_11_00 || op->imm_opt == IMM_5_11_20) {
+				if ((uint32_t) imm >= (1 << 5)) { return ERR_IMM_OUT_RANGE; }
+				imm &= 0b11111;
+				if (op->imm_opt == IMM_5_11_20) {
+					imm |= 0x20 << 5;
+				}
+				// If imm_opt == IMM_5_11_00, imm[11:5] = 0x00
+			}
 			break;
 		}
 	}
 
+	// printf("DBG imm: %d\n", imm);
+	// For I-Type and S-Type, imm is signed
+	if ((inst->fmt == I_TYPE || inst->fmt == S_TYPE) && imm < 0) {
+		imm = (1 << 12) + imm;
+		// printf("DBG imm b2: %d\n", imm);
+	}
+	if ((inst->fmt == B_TYPE) && imm < 0) {
+		imm = (1 << 13) + imm;
+		// printf("DBG imm b2: %d\n", imm);
+	}
+	if ((inst->fmt == J_TYPE) && imm < 0) {
+		imm = (1 << 21) + imm;
+		// printf("DBG imm b2: %d\n", imm);
+	}
+
+	// TODO: Validate size of imm
 	out |= inst->opcode;
 	switch (inst->fmt) {
 	case R_TYPE:
@@ -521,8 +571,24 @@ eval_inst(context_t *ctx, string_t *name, vector_t *args, sexpr_t *res, int pass
 		out |= rs1 << 15;
 		out |= rs2 << 20;
 		out |= inst->funct7 << 25;
+		break;
+	case I_TYPE:
+		if ((uint32_t) imm >= (1 << 12)) { return ERR_IMM_OUT_RANGE; }
+		out |= rd << 7;
+		out |= inst->funct3 << 12;
+		out |= rs1 << 15;
+		out |= imm << 20;
+		break;
+	case S_TYPE:
+		if ((uint32_t) imm >= (1 << 12)) { return ERR_IMM_OUT_RANGE; }
+		out |= (imm & 0b1111) << 7;
+		out |= inst->funct3 << 12;
+		out |= rs1 << 15;
+		out |= rs2 << 20;
+		out |= (imm & (0b1111111 << 5)) >> 5 << 25;
+		break;
 	case B_TYPE:
-		printf("DBG imm: %04x\n", imm);
+		if ((uint32_t) imm >= (1 << 13)) { return ERR_IMM_OUT_RANGE; }
 		out |= (imm & (1 << 11)) >> 11 << 7;
 		out |= (imm & (0b1111 << 1)) >> 1 << 8;
 		out |= inst->funct3 << 12;
@@ -530,16 +596,33 @@ eval_inst(context_t *ctx, string_t *name, vector_t *args, sexpr_t *res, int pass
 		out |= rs2 << 20;
 		out |= (imm & (0b111111 << 5)) >> 5 << 25;
 		out |= (imm & (1 << 12)) >> 12 << 31;
+		break;
+	case U_TYPE:
+		out |= rd << 7;
+		out |= (imm & (0xfffff000)) >> 12 << 12;
+		break;
+	case J_TYPE:
+		if ((uint32_t) imm >= (1 << 21)) { return ERR_IMM_OUT_RANGE; }
+		out |= rd << 7;
+		out |= (imm & (0b11111111 << 12)) >> 12 << 12;
+		out |= (imm & (1 << 11)) >> 11 << 20;
+		out |= (imm & (0b1111111111 << 1)) >> 1 << 21;
+		out |= (imm & (1 << 20)) >> 20 << 31;
+		break;
 	default:
 		break;
 	}
 
-	printf("inst: %02x %02x %02x %02x\n",
-	       (out & (0xff << (0 * 8))) >> (0 * 8),
-	       (out & (0xff << (1 * 8))) >> (1 * 8),
-	       (out & (0xff << (2 * 8))) >> (2 * 8),
-	       (out & (0xff << (3 * 8))) >> (3 * 8)
-	       );
+	word[0] = (out & (0xff << (0 * 8))) >> (0 * 8);
+	word[1] = (out & (0xff << (1 * 8))) >> (1 * 8);
+	word[2] = (out & (0xff << (2 * 8))) >> (2 * 8);
+	word[3] = (out & (0xff << (3 * 8))) >> (3 * 8);
+	ret = fwrite(word, 4, 1, ctx->out_file);
+	if (ret != 1) {
+		printf("DBG ret=%ld\n", ret);
+		return ERR_IO;
+	}
+	printf("inst: %02x %02x %02x %02x\n", word[0], word[1], word[2], word[3]);
 
 	return OK;
 }
@@ -668,23 +751,23 @@ dbg_print_sym_table(vector_t *sym_table)
 	}
 }
 
-error_t
-parse_reg(string_t *elem, uint32_t *n)
-{
-	string_t s;
-	char e0;
-	if (elem->length < 2) {
-		return ERR_UNK;
-	}
-	e0 = elem->data[0]; // e0 contains the element's first char
-	s.data = elem->data + 1; // s contains the element without the first char
-	s.length = elem->length-1;
-	string_write(&s, stdout);
-	if (e0 == 'r') {
-		return dec2num(&s, n);
-	}
-	return OK;
-}
+// error_t
+// parse_reg(string_t *elem, uint32_t *n)
+// {
+// 	string_t s;
+// 	char e0;
+// 	if (elem->length < 2) {
+// 		return ERR_UNK;
+// 	}
+// 	e0 = elem->data[0]; // e0 contains the element's first char
+// 	s.data = elem->data + 1; // s contains the element without the first char
+// 	s.length = elem->length-1;
+// 	// string_write(&s, stdout);
+// 	if (e0 == 'r') {
+// 		return dec2num(&s, n);
+// 	}
+// 	return OK;
+// }
 
 // int
 // assemble(context_t *ctx, line_t *parsed_line)
@@ -737,33 +820,35 @@ parse_reg(string_t *elem, uint32_t *n)
 int
 main(int argc, char **argv)
 {
-	char *src_path = NULL;
+	char *src_path = NULL, *out_path = NULL;
 	int err = 0;
 	context_t ctx;
+	sexpr_t res;
+	sexpr_t sexpr;
 
 	// Initialize objects
 
 	if ((err = context_init(&ctx)) != OK) {
 		goto main_free;
 	}
+	sexpr_init(&res);
+	sexpr_init(&sexpr);
 
 	// Gather arguments
 
-	if (argc < 2) {
+	if (argc < 3) {
 		fprintf(stderr, "ERR: No input file\n");
 		err = -1;
 		goto main_free;
 	}
 	src_path = argv[1];
-	err = context_open(&ctx, src_path);
+	out_path = argv[2];
+	err = context_open(&ctx, src_path, out_path);
 	if (err != OK) {
 		goto main_free;
 	}
 
 
-	sexpr_t sexpr;
-	sexpr_init(&sexpr);
-	sexpr_t res;
 
 	// Pass 1
 	while (true) {
@@ -811,7 +896,7 @@ main(int argc, char **argv)
 	}
 
 	// Pass 2
-	if (context_reset_file(&ctx) != 0) {
+	if (context_reset_src_file(&ctx) != 0) {
 		fprintf(stderr, "ERR: Seeking input file\n");
 		err = -1;
 		goto main_free;
