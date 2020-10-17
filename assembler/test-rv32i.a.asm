@@ -1,19 +1,19 @@
-(.s 'a00)
+($ 'a00)
     (add x1 x2 x3)
     (add ra sp gp)
-(.s 'a04)
+($ 'a04)
     (sub x2 x3 x4)
     (xor x4 x12 x15)
 
     (addi x1 x2 0x12)
 
-(.s 'a16)
+($ 'a16)
     (lb x1 x2 0x14)
 
     (sb x5 x3 0x23)
 
-    (beq x4 x8 0x22)
-    (beq x4 x8 (.r a16))
+    (beq tp s0 0x22)
+    (beq x4 x8 (@ a16))
 
 ; (.s arm-thumb)
 ;     (.equ GPIOC_CRH 0x40011004)

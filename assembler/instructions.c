@@ -88,7 +88,7 @@ string_register_alias_cmp(string_t *key, register_alias_t *reg_alias)
     return string_cmp_c(key, reg_alias->name);
 }
 
-const int instructions_len = 8;
+const int instructions_len = 7;
 const instruction_t instructions[] = {
     {name: "add", fmt: R_TYPE, opcode: 0b0110011, funct3: 0x0, funct7: 0x00, ops_len: 3, ops: (operand_t[]) {
 	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: REG, reg_opt: RS2}
@@ -112,11 +112,7 @@ const instruction_t instructions[] = {
 	{type: REG, reg_opt: RS2}, {type: REG, reg_opt: RS1}, {type: IMM, imm_opt: SIG}
     }},
     // ...
-    {name: "beq", fmt: B_TYPE, ops_len: 3, ops: (operand_t[]) {
-	{type: REG, reg_opt: RS1}, {type: REG, reg_opt: RS2}, {type: IMM, imm_opt: SIG}
-    }},
-    // ...
-    {name: "beq", fmt: B_TYPE, ops_len: 3, ops: (operand_t[]) {
+    {name: "beq", fmt: B_TYPE, opcode: 0b1100011, funct3: 0x0, ops_len: 3, ops: (operand_t[]) {
 	{type: REG, reg_opt: RS1}, {type: REG, reg_opt: RS2}, {type: IMM, imm_opt: SIG}
     }},
 };

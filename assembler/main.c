@@ -430,7 +430,7 @@ eval_args(context_t *ctx, vector_t *args, int pass)
 	for (i = 0; i < args->length; i++) {
 		TRY(eval(ctx, vector_get(args, i),
 			&res, pass));
-		memcpy(vector_get(args, i), &res, sizeof(sexpr_t));
+		* (sexpr_t *) vector_get(args, i) = res;
 	}
 	return OK;
 }
@@ -451,18 +451,9 @@ dir_symbol(context_t *ctx, string_t *name, int pass)
 error_t
 eval_directive(context_t *ctx, string_t *dir, vector_t *args, sexpr_t *res, int pass)
 {
-	error_t err;
-	res->type = NIL;
-
- 	if (string_cmp_c(dir, ".s") == EQUAL) {
-		TRY(eval_args(ctx, args, pass));
-		TRY(validate_args(args, 1, (sexpr_type_t[]) { SYMBOL }));
-		return dir_symbol(ctx, &((sexpr_t *) vector_get(args, 0))->symbol, pass);
- 	} else {
-		printf("DBG Unknown directive: ");
-		string_write(dir, stdout);
-		printf("\n");
-	}
+	printf("DBG Unknown directive: ");
+	string_write(dir, stdout);
+	printf("\n");
 	return OK;
 }
 
@@ -523,13 +514,22 @@ eval_inst(context_t *ctx, string_t *name, vector_t *args, sexpr_t *res, int pass
 	}
 
 	out |= inst->opcode;
-	out |= inst->funct3 << 12;
 	switch (inst->fmt) {
 	case R_TYPE:
 		out |= rd << 7;
+		out |= inst->funct3 << 12;
 		out |= rs1 << 15;
 		out |= rs2 << 20;
 		out |= inst->funct7 << 25;
+	case B_TYPE:
+		printf("DBG imm: %04x\n", imm);
+		out |= (imm & (1 << 11)) >> 11 << 7;
+		out |= (imm & (0b1111 << 1)) >> 1 << 8;
+		out |= inst->funct3 << 12;
+		out |= rs1 << 15;
+		out |= rs2 << 20;
+		out |= (imm & (0b111111 << 5)) >> 5 << 25;
+		out |= (imm & (1 << 12)) >> 12 << 31;
 	default:
 		break;
 	}
@@ -547,10 +547,23 @@ eval_inst(context_t *ctx, string_t *name, vector_t *args, sexpr_t *res, int pass
 error_t
 eval_fn(context_t *ctx, string_t *fn, vector_t *args, sexpr_t *res, int pass)
 {
-	printf("DBG Unknown fn: ");
-	string_write(fn, stdout);
-	printf("\n");
+	error_t err;
 	res->type = NIL;
+ 	if (string_cmp_c(fn, "$") == EQUAL) {
+		TRY(eval_args(ctx, args, pass));
+		TRY(validate_args(args, 1, (sexpr_type_t[]) { SYMBOL }));
+		return dir_symbol(ctx, &((sexpr_t *) vector_get(args, 0))->symbol, pass);
+	} else if (string_cmp_c(fn, "@") == EQUAL) {
+		TRY(eval_args(ctx, args, pass));
+		TRY(validate_args(args, 1, (sexpr_type_t[]) { INTEGER }));
+		res->type = INTEGER;
+		res->integer = ((sexpr_t *) vector_get(args, 0))->integer - (((int32_t) ctx->addr) - 4);
+		return OK;
+ 	} else {
+		printf("DBG Unknown fn: ");
+		string_write(fn, stdout);
+		printf("\n");
+	}
 	return OK;
 }
 
@@ -569,13 +582,15 @@ eval_symbol(context_t *ctx, string_t *s, sexpr_t *res, int pass)
 		return OK;
 	}
 
-	// Search the symbol in the symbol table (labels) // TODO: Maybe rename symbols to labels
-	sym = (symbol_t *) vector_bin_search(&ctx->sym_table,
-		(cmp_t (*)(void *, void *)) string_symbol_cmp, s);
-	if (sym != NULL) {
-		res->type = INTEGER;
-		res->integer = sym->addr;
-		return OK;
+	if (pass != 1) {
+		// Search the symbol in the symbol table (labels) // TODO: Maybe rename symbols to labels
+		sym = (symbol_t *) vector_bin_search(&ctx->sym_table,
+			(cmp_t (*)(void *, void *)) string_symbol_cmp, s);
+		if (sym != NULL) {
+			res->type = INTEGER;
+			res->integer = sym->addr;
+			return OK;
+		}
 	}
 	res->type = NIL;
 	return ERR_SYM_NOT_DEF;
@@ -587,9 +602,7 @@ eval(context_t *ctx, sexpr_t *sexpr, sexpr_t *res, int pass)
 	error_t err;
 	sexpr_t *head;
 	vector_t args;
-	// sexpr_t *arg;
 	char c;
-	// int i;
 
 	switch (sexpr->type) {
 	case LIST:
@@ -598,23 +611,14 @@ eval(context_t *ctx, sexpr_t *sexpr, sexpr_t *res, int pass)
 			res->type = NIL;
 			return OK;
 		}
-		// TRY_GOTO(vector_init(&args, sizeof(sexpr_t), 0,
-		// 		  (void (*)(void *)) sexpr_free), eval_free);
 		head = (sexpr_t *) vector_get(&sexpr->list, 0);
 		if (head->type != SYMBOL) {
 			err = ERR_EVAL_HEADNOSYM;
 			goto eval_free;
 		}
-		memcpy(&args, &sexpr->list, sizeof(vector_t));
+		args = sexpr->list;
 		args.data += args.elem_size;
 		args.length--;
-		// for (i = 1; i < sexpr->list.length; i++) {
-		// 	arg = vector_get(&sexpr->list, i);
-		// 	TRY_GOTO(vector_push(&args, arg), eval_free);
-		// 	arg->type = NIL;
-		// 	// TRY_GOTO(eval(ctx, vector_get(&sexpr->list, i),
-		// 	// 	vector_get(&list, i - 1), pass), eval_free);
-		// }
 
 		c = head->symbol.data[0];
 		if (c == '.') {
@@ -640,14 +644,11 @@ eval(context_t *ctx, sexpr_t *sexpr, sexpr_t *res, int pass)
 		default:
 			break;
 		}
-		memcpy(res, sexpr, sizeof(sexpr_t));
-		sexpr->type = NIL;
+		*res = *sexpr;
 		return OK;
 	}
 
 eval_free:
-	// sexpr_free(head);
-	// vector_free(&args);
 	sexpr_free(sexpr);
 	return err;
 }
@@ -842,7 +843,7 @@ main(int argc, char **argv)
 main_free:
 	context_free(&ctx);
 	// vector_free(&parsed_line.elems);
-	sexpr_free(&sexpr);
+	// sexpr_free(&sexpr);
 	sexpr_free(&res);
 	return err;
 }

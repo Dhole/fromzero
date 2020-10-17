@@ -202,6 +202,9 @@ vector_bin_search(vector_t *v, elem_cmp_fn_t elem_cmp_fn, void *key)
 	int p;
 	void *elem;
 	cmp_t cmp;
+	if (v->length == 0) {
+		return NULL;
+	}
 	while (true) {
 		p = (lo + hi) / 2;
 		elem = vector_get(v, (size_t) p);
