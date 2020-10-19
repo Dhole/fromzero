@@ -20,4 +20,5 @@ const char *error_string[] = {
     "unexpected negative integer", // 18
     "imm out of range", // 19
     "unknown instruction", // 20
+    "invalid org address", // 21
 };

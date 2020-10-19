@@ -13,6 +13,8 @@
 #define MAX_COL 100
 #define MAX_ELEM 8
 
+#define LIST_GET(list, i) ((sexpr_t *) vector_get(list, i))
+
 enum elem_type {
 	ELEM_OP = 1,
 	ELEM_DIRECTIVE = 2,
@@ -39,7 +41,15 @@ symbol_free(symbol_t *s)
 cmp_t
 symbol_cmp(symbol_t *a, symbol_t *b)
 {
-	return string_cmp(&a->label, &b->label);
+	cmp_t c;
+	printf("A:");
+	string_write(&a->label, stdout);
+	printf(" B:");
+	string_write(&b->label, stdout);
+	c = string_cmp(&a->label, &b->label);
+	printf(" (%d)\n", c); // A < B (-1)
+	return c;
+	// return string_cmp(&a->label, &b->label);
 }
 
 cmp_t
@@ -53,6 +63,7 @@ typedef struct {
 	FILE *src_file;
 	char *out_path;
 	FILE *out_file;
+	int pass;
 	int linum;
 	int colnum;
 	char str[MAX_COL]; // Buffer to hold a temporary string
@@ -64,6 +75,7 @@ error_t
 context_init(context_t *ctx)
 {
 	error_t err;
+	ctx->pass = 0;
 	ctx->src_path = NULL;
 	ctx->src_file = NULL;
 	ctx->out_path = NULL;
@@ -100,7 +112,7 @@ context_open(context_t *ctx, char *src_path, char *out_path)
 int
 context_reset_src_file(context_t *ctx)
 {
-	ctx->linum = 0;
+	ctx->linum = 1;
 	ctx->addr = 0;
 	return fseek(ctx->src_file, 0, SEEK_SET);
 }
@@ -232,7 +244,7 @@ dbg_print_sexpr(sexpr_t *sexpr)
 	case LIST:
 		printf("(");
 		for (i = 0; i < sexpr->list.length; i++) {
-			sexpr0 = (sexpr_t *) vector_get(&sexpr->list, i);
+			sexpr0 = LIST_GET(&sexpr->list, i);
 			assert(sexpr0 != NULL);
 			// printf("%d:", i);
 			dbg_print_sexpr(sexpr0);
@@ -275,7 +287,7 @@ sexpr_set(sexpr_t *sexpr, string_t *str, lexer_state_t state, bool quote)
 		break;
 	case IN_INTEGER:
 		sexpr->type = INTEGER;
-		TRY(str2num(str, (uint32_t *) &sexpr->integer));
+		TRY(str2num(str, &sexpr->integer));
 		break;
 	default:
 		break;
@@ -339,7 +351,8 @@ parse(context_t *ctx, sexpr_t *sexpr, int level)
 			if (state == IN_WS) {
 				if (c == '"') {
 					state = IN_STRING;
-				} else if (c >= '0' && c <= '9') {
+				} else if ((c >= '0' && c <= '9') ||
+					   c == '-' ) {
 					state = IN_INTEGER;
 				} else {
 					state = IN_SYMBOL;
@@ -361,7 +374,7 @@ parse(context_t *ctx, sexpr_t *sexpr, int level)
 				// First reserve a new slot in the list, assign
 				// it to sexpr temporarly.
 				TRY(vector_push(list, sexpr));
-				sexpr = (sexpr_t *) vector_get(list, list->length - 1);
+				sexpr = LIST_GET(list, list->length - 1);
 			}
 			TRY(sexpr_set(sexpr, &str, old_state, quote));
 			quote = false;
@@ -382,7 +395,7 @@ parse(context_t *ctx, sexpr_t *sexpr, int level)
 		if (c == '(') {
 			if (level != 0) {
 				TRY(vector_push(list, sexpr));
-				sexpr = (sexpr_t *) vector_get(list, list->length - 1);
+				sexpr = LIST_GET(list, list->length - 1);
 			}
 			if (quote) {
 				sexpr->type = QUOTE_LIST;
@@ -416,6 +429,23 @@ parse_do:
 }
 
 error_t
+write_word(context_t *ctx, uint32_t word)
+{
+	char bytes[4];
+	size_t ret;
+
+	bytes[0] = (word & (0xff << (0 * 8))) >> (0 * 8);
+	bytes[1] = (word & (0xff << (1 * 8))) >> (1 * 8);
+	bytes[2] = (word & (0xff << (2 * 8))) >> (2 * 8);
+	bytes[3] = (word & (0xff << (3 * 8))) >> (3 * 8);
+	ret = fwrite(bytes, 4, 1, ctx->out_file);
+	if (ret != 1) {
+		return ERR_IO;
+	}
+	return OK;
+}
+
+error_t
 validate_args(vector_t *args, int length, sexpr_type_t *types)
 {
 	int i;
@@ -432,10 +462,10 @@ validate_args(vector_t *args, int length, sexpr_type_t *types)
 	return OK;
 }
 
-error_t eval(context_t *ctx, sexpr_t *sexpr, sexpr_t *res, int pass);
+error_t eval(context_t *ctx, sexpr_t *sexpr, sexpr_t *res);
 
 error_t
-eval_args(context_t *ctx, vector_t *args, int pass)
+eval_args(context_t *ctx, vector_t *args)
 {
 	error_t err;
 	int i;
@@ -443,18 +473,18 @@ eval_args(context_t *ctx, vector_t *args, int pass)
 
 	for (i = 0; i < args->length; i++) {
 		TRY(eval(ctx, vector_get(args, i),
-			&res, pass));
-		* (sexpr_t *) vector_get(args, i) = res;
+			&res));
+		* LIST_GET(args, i) = res;
 	}
 	return OK;
 }
 error_t
-dir_symbol(context_t *ctx, string_t *name, int pass)
+dir_symbol(context_t *ctx, string_t *name)
 {
 	error_t err;
  	symbol_t symbol;
 
-	if (pass != 1) {
+	if (ctx->pass != 1) {
 		return OK;
 	}
 	TRY(string_set(&symbol.label, name));
@@ -463,22 +493,53 @@ dir_symbol(context_t *ctx, string_t *name, int pass)
 }
 
 error_t
-eval_directive(context_t *ctx, string_t *dir, vector_t *args, sexpr_t *res, int pass)
+dir_org(context_t *ctx, int32_t addr)
 {
-	printf("DBG Unknown directive: ");
-	string_write(dir, stdout);
-	printf("\n");
+	if (ctx->addr != 0 && addr < ctx->addr + 4) {
+		return ERR_BAD_ORG;
+	}
+	if (ctx->pass == 2 && ctx->addr != 0) {
+		if (fseek(ctx->out_file, addr - ctx->addr, SEEK_CUR) != 0) {
+			return ERR_IO;
+		}
+	}
+	ctx->addr = addr;
 	return OK;
 }
 
 error_t
-eval_inst(context_t *ctx, string_t *name, vector_t *args, sexpr_t *res, int pass)
+eval_directive(context_t *ctx, string_t *dir, vector_t *args, sexpr_t *res)
+{
+	error_t err;
+	res->type = NIL;
+ 	if (string_cmp_c(dir, ".org") == EQUAL) {
+		TRY(eval_args(ctx, args));
+		TRY(validate_args(args, 1, (sexpr_type_t[]) { INTEGER }));
+		TRY(dir_org(ctx, LIST_GET(args, 0)->integer));
+		return OK;
+	} else if (string_cmp_c(dir, ".word") == EQUAL) {
+		TRY(eval_args(ctx, args));
+		TRY(validate_args(args, 1, (sexpr_type_t[]) { INTEGER }));
+		ctx->addr += 4;
+		if (ctx->pass == 2) {
+			TRY(write_word(ctx, LIST_GET(args, 0)->integer));
+		}
+		return OK;
+ 	} else {
+		printf("DBG Unknown dir: ");
+		string_write(dir, stdout);
+		printf("\n");
+	}
+	return OK;
+}
+
+error_t
+eval_inst(context_t *ctx, string_t *name, vector_t *args, sexpr_t *res)
 {
 	error_t err;
 	int i;
-	uint32_t out = 0;
-	char word[4];
-	size_t ret;
+	uint32_t word = 0;
+	uint8_t bytes[4];
 	uint32_t rd = 0, rs1 = 0, rs2 = 0;
 	int32_t imm = 0;
 	sexpr_t *arg;
@@ -487,10 +548,10 @@ eval_inst(context_t *ctx, string_t *name, vector_t *args, sexpr_t *res, int pass
 	res->type = NIL;
 
 	ctx->addr += 4;
-	if (pass != 2) {
+	if (ctx->pass != 2) {
 		return OK;
 	}
-	TRY(eval_args(ctx, args, pass));
+	TRY(eval_args(ctx, args));
 
 	// TODO: Replace by binary search
  	for (i = 0; i < instructions_len; i++) {
@@ -563,84 +624,86 @@ eval_inst(context_t *ctx, string_t *name, vector_t *args, sexpr_t *res, int pass
 	}
 
 	// TODO: Validate size of imm
-	out |= inst->opcode;
+	word |= inst->opcode;
 	switch (inst->fmt) {
 	case R_TYPE:
-		out |= rd << 7;
-		out |= inst->funct3 << 12;
-		out |= rs1 << 15;
-		out |= rs2 << 20;
-		out |= inst->funct7 << 25;
+		word |= rd << 7;
+		word |= inst->funct3 << 12;
+		word |= rs1 << 15;
+		word |= rs2 << 20;
+		word |= inst->funct7 << 25;
 		break;
 	case I_TYPE:
 		if ((uint32_t) imm >= (1 << 12)) { return ERR_IMM_OUT_RANGE; }
-		out |= rd << 7;
-		out |= inst->funct3 << 12;
-		out |= rs1 << 15;
-		out |= imm << 20;
+		word |= rd << 7;
+		word |= inst->funct3 << 12;
+		word |= rs1 << 15;
+		word |= imm << 20;
 		break;
 	case S_TYPE:
 		if ((uint32_t) imm >= (1 << 12)) { return ERR_IMM_OUT_RANGE; }
-		out |= (imm & 0b1111) << 7;
-		out |= inst->funct3 << 12;
-		out |= rs1 << 15;
-		out |= rs2 << 20;
-		out |= (imm & (0b1111111 << 5)) >> 5 << 25;
+		word |= (imm & 0b1111) << 7;
+		word |= inst->funct3 << 12;
+		word |= rs1 << 15;
+		word |= rs2 << 20;
+		word |= (imm & (0b1111111 << 5)) >> 5 << 25;
 		break;
 	case B_TYPE:
 		if ((uint32_t) imm >= (1 << 13)) { return ERR_IMM_OUT_RANGE; }
-		out |= (imm & (1 << 11)) >> 11 << 7;
-		out |= (imm & (0b1111 << 1)) >> 1 << 8;
-		out |= inst->funct3 << 12;
-		out |= rs1 << 15;
-		out |= rs2 << 20;
-		out |= (imm & (0b111111 << 5)) >> 5 << 25;
-		out |= (imm & (1 << 12)) >> 12 << 31;
+		word |= (imm & (1 << 11)) >> 11 << 7;
+		word |= (imm & (0b1111 << 1)) >> 1 << 8;
+		word |= inst->funct3 << 12;
+		word |= rs1 << 15;
+		word |= rs2 << 20;
+		word |= (imm & (0b111111 << 5)) >> 5 << 25;
+		word |= (imm & (1 << 12)) >> 12 << 31;
 		break;
 	case U_TYPE:
-		out |= rd << 7;
-		out |= (imm & (0xfffff000)) >> 12 << 12;
+		word |= rd << 7;
+		word |= (imm & (0xfffff000)) >> 12 << 12;
 		break;
 	case J_TYPE:
 		if ((uint32_t) imm >= (1 << 21)) { return ERR_IMM_OUT_RANGE; }
-		out |= rd << 7;
-		out |= (imm & (0b11111111 << 12)) >> 12 << 12;
-		out |= (imm & (1 << 11)) >> 11 << 20;
-		out |= (imm & (0b1111111111 << 1)) >> 1 << 21;
-		out |= (imm & (1 << 20)) >> 20 << 31;
+		word |= rd << 7;
+		word |= (imm & (0b11111111 << 12)) >> 12 << 12;
+		word |= (imm & (1 << 11)) >> 11 << 20;
+		word |= (imm & (0b1111111111 << 1)) >> 1 << 21;
+		word |= (imm & (1 << 20)) >> 20 << 31;
 		break;
 	default:
 		break;
 	}
 
-	word[0] = (out & (0xff << (0 * 8))) >> (0 * 8);
-	word[1] = (out & (0xff << (1 * 8))) >> (1 * 8);
-	word[2] = (out & (0xff << (2 * 8))) >> (2 * 8);
-	word[3] = (out & (0xff << (3 * 8))) >> (3 * 8);
-	ret = fwrite(word, 4, 1, ctx->out_file);
-	if (ret != 1) {
-		printf("DBG ret=%ld\n", ret);
-		return ERR_IO;
-	}
-	printf("inst: %02x %02x %02x %02x\n", word[0], word[1], word[2], word[3]);
+	TRY(write_word(ctx, word));
+	// ret = fwrite(word, 4, 1, ctx->out_file);
+	// if (ret != 1) {
+	// 	printf("DBG ret=%ld\n", ret);
+	// 	return ERR_IO;
+	// }
+	bytes[0] = (word & (0xff << (0 * 8))) >> (0 * 8);
+	bytes[1] = (word & (0xff << (1 * 8))) >> (1 * 8);
+	bytes[2] = (word & (0xff << (2 * 8))) >> (2 * 8);
+	bytes[3] = (word & (0xff << (3 * 8))) >> (3 * 8);
+	printf("inst: %02x %02x %02x %02x\n",
+	       bytes[0], bytes[1], bytes[2], bytes[3]);
 
 	return OK;
 }
 
 error_t
-eval_fn(context_t *ctx, string_t *fn, vector_t *args, sexpr_t *res, int pass)
+eval_fn(context_t *ctx, string_t *fn, vector_t *args, sexpr_t *res)
 {
 	error_t err;
 	res->type = NIL;
  	if (string_cmp_c(fn, "$") == EQUAL) {
-		TRY(eval_args(ctx, args, pass));
+		TRY(eval_args(ctx, args));
 		TRY(validate_args(args, 1, (sexpr_type_t[]) { SYMBOL }));
-		return dir_symbol(ctx, &((sexpr_t *) vector_get(args, 0))->symbol, pass);
+		return dir_symbol(ctx, &LIST_GET(args, 0)->symbol);
 	} else if (string_cmp_c(fn, "@") == EQUAL) {
-		TRY(eval_args(ctx, args, pass));
+		TRY(eval_args(ctx, args));
 		TRY(validate_args(args, 1, (sexpr_type_t[]) { INTEGER }));
 		res->type = INTEGER;
-		res->integer = ((sexpr_t *) vector_get(args, 0))->integer - (((int32_t) ctx->addr) - 4);
+		res->integer = LIST_GET(args, 0)->integer - (((int32_t) ctx->addr) - 4);
 		return OK;
  	} else {
 		printf("DBG Unknown fn: ");
@@ -651,7 +714,7 @@ eval_fn(context_t *ctx, string_t *fn, vector_t *args, sexpr_t *res, int pass)
 }
 
 error_t
-eval_symbol(context_t *ctx, string_t *s, sexpr_t *res, int pass)
+eval_symbol(context_t *ctx, string_t *s, sexpr_t *res)
 {
 	register_alias_t *reg;
 	symbol_t *sym;
@@ -665,7 +728,7 @@ eval_symbol(context_t *ctx, string_t *s, sexpr_t *res, int pass)
 		return OK;
 	}
 
-	if (pass != 1) {
+	if (ctx->pass != 1) {
 		// Search the symbol in the symbol table (labels) // TODO: Maybe rename symbols to labels
 		sym = (symbol_t *) vector_bin_search(&ctx->sym_table,
 			(cmp_t (*)(void *, void *)) string_symbol_cmp, s);
@@ -680,7 +743,7 @@ eval_symbol(context_t *ctx, string_t *s, sexpr_t *res, int pass)
 }
 
 error_t
-eval(context_t *ctx, sexpr_t *sexpr, sexpr_t *res, int pass)
+eval(context_t *ctx, sexpr_t *sexpr, sexpr_t *res)
 {
 	error_t err;
 	sexpr_t *head;
@@ -694,7 +757,7 @@ eval(context_t *ctx, sexpr_t *sexpr, sexpr_t *res, int pass)
 			res->type = NIL;
 			return OK;
 		}
-		head = (sexpr_t *) vector_get(&sexpr->list, 0);
+		head = LIST_GET(&sexpr->list, 0);
 		if (head->type != SYMBOL) {
 			err = ERR_EVAL_HEADNOSYM;
 			goto eval_free;
@@ -705,15 +768,15 @@ eval(context_t *ctx, sexpr_t *sexpr, sexpr_t *res, int pass)
 
 		c = head->symbol.data[0];
 		if (c == '.') {
-			err = eval_directive(ctx, &head->symbol, &args, res, pass);
+			err = eval_directive(ctx, &head->symbol, &args, res);
 		} else if (is_alpha(c)) {
-			err = eval_inst(ctx, &head->symbol, &args, res, pass);
+			err = eval_inst(ctx, &head->symbol, &args, res);
 		} else {
-			err = eval_fn(ctx, &head->symbol, &args, res, pass);
+			err = eval_fn(ctx, &head->symbol, &args, res);
 		}
 		goto eval_free;
 	case SYMBOL:
-		err = eval_symbol(ctx, &sexpr->symbol, res, pass);
+		err = eval_symbol(ctx, &sexpr->symbol, res);
 		sexpr_free(sexpr);
 		return err;
 	default:
@@ -851,6 +914,7 @@ main(int argc, char **argv)
 
 
 	// Pass 1
+	ctx.pass = 1;
 	while (true) {
 		err = parse(&ctx, &sexpr, 0);
 		if (err == ERR_EOF) {
@@ -864,7 +928,7 @@ main(int argc, char **argv)
 		dbg_print_sexpr(&sexpr);
 		printf("\n");
 
-		err = eval(&ctx, &sexpr, &res, 1);
+		err = eval(&ctx, &sexpr, &res);
 		if (err != OK) {
 			error(&ctx, err, "pass 1 eval()");
 			err = -1;
@@ -873,6 +937,8 @@ main(int argc, char **argv)
 		sexpr_free(&res);
 
 	}
+	printf("\n---\n\n");
+	dbg_print_sym_table(&ctx.sym_table);
 	vector_sort(&ctx.sym_table, (cmp_t (*)(void *, void *)) symbol_cmp);
 	printf("\n---\n\n");
 	dbg_print_sym_table(&ctx.sym_table);
@@ -896,6 +962,7 @@ main(int argc, char **argv)
 	}
 
 	// Pass 2
+	ctx.pass = 2;
 	if (context_reset_src_file(&ctx) != 0) {
 		fprintf(stderr, "ERR: Seeking input file\n");
 		err = -1;
@@ -903,7 +970,7 @@ main(int argc, char **argv)
 	}
 
 	while (true) {
-		err = parse(&ctx, &sexpr, 0);
+		err = parse(&ctx, &sexpr , 0);
 		if (err == ERR_EOF) {
 			err = 0;
 			break;
@@ -915,7 +982,7 @@ main(int argc, char **argv)
 		dbg_print_sexpr(&sexpr);
 		printf("\n");
 
-		err = eval(&ctx, &sexpr, &res, 2);
+		err = eval(&ctx, &sexpr, &res);
 		if (err != OK) {
 			error(&ctx, err, "pass 2 eval()");
 			err = -1;
@@ -927,8 +994,7 @@ main(int argc, char **argv)
 
 main_free:
 	context_free(&ctx);
-	// vector_free(&parsed_line.elems);
-	// sexpr_free(&sexpr);
+	sexpr_free(&sexpr);
 	sexpr_free(&res);
 	return err;
 }

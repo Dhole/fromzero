@@ -136,10 +136,10 @@ cmp_t
 string_cmp(string_t *a, string_t *b)
 {
 	int i;
-	char char_a, char_b;
+	uint8_t char_a, char_b;
 	for (i = 0; i < a->length && i < b->length; i++) {
-		char_a = a->data[i];
-		char_b = b->data[i];
+		char_a = (uint8_t) a->data[i];
+		char_b = (uint8_t) b->data[i];
 		if (char_a < char_b) {
 			return LESS;
 		} else if (char_a > char_b) {

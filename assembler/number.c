@@ -99,9 +99,9 @@ dec2num(string_t *s, uint32_t *n)
 }
 
 error_t
-str2num(string_t *s, uint32_t *n)
+_str2num(string_t *s, uint32_t *n)
 {
-    if (s->data[0] < 0x30 || s->data[0] > 0x39) {
+    if (s->length == 0 || s->data[0] < 0x30 || s->data[0] > 0x39) {
 	return ERR_NUM_DEC;
     }
     string_t slice;
@@ -113,6 +113,29 @@ str2num(string_t *s, uint32_t *n)
 	return bin2num(&slice, n);
     } else {
 	return dec2num(s, n);
+    }
+}
+
+error_t
+str2num(string_t *_s, int32_t *_n)
+{
+    string_t s;
+    error_t err;
+    int32_t n, sig = 1;
+
+    if (_s->length == 0) { return ERR_NUM_DEC; }
+    switch (_s->data[0]) {
+    case '-':
+	sig = -1;
+    case '+':
+	s = *_s;
+	s.data++;
+	s.length--;
+	err = _str2num(&s, (uint32_t *) &n);
+	*_n = sig * n;
+	return err;
+    default:
+	return _str2num(_s, (uint32_t *) _n);
     }
 }
 

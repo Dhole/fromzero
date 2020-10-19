@@ -31,9 +31,9 @@ const register_alias_t _registers[] = {
     {name: "s8", value: 24},
     {name: "s9", value: 25},
     {name: "sp", value: 2},
-    {name: "t0", value: 0},
-    {name: "t1", value: 1},
-    {name: "t2", value: 2},
+    {name: "t0", value: 5},
+    {name: "t1", value: 6},
+    {name: "t2", value: 7},
     {name: "t3", value: 28},
     {name: "t4", value: 29},
     {name: "t5", value: 30},
@@ -88,7 +88,7 @@ string_register_alias_cmp(string_t *key, register_alias_t *reg_alias)
     return string_cmp_c(key, reg_alias->name);
 }
 
-const int instructions_len = 39;
+const int instructions_len = 40;
 const instruction_t instructions[] = {
     {name: "add",  fmt: R_TYPE, opcode: 0b0110011, funct3: 0x0, funct7: 0x00, ops_len: 3, ops: (operand_t[]) {
 	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: REG, reg_opt: RS2}
@@ -198,8 +198,8 @@ const instruction_t instructions[] = {
 	{type: REG, reg_opt: RD}, {type: IMM, imm_opt: SIG}
     }},
 
-    {name: "jalr",  fmt: I_TYPE, opcode: 0b1100111, funct3: 0x0, ops_len: 2, ops: (operand_t[]) {
-	{type: REG, reg_opt: RD}, {type: IMM, imm_opt: SIG}
+    {name: "jalr",  fmt: I_TYPE, opcode: 0b1100111, funct3: 0x0, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: IMM, imm_opt: SIG}
     }},
 
     {name: "lui",   fmt: U_TYPE, opcode: 0b0110111, ops_len: 2, ops: (operand_t[]) {
@@ -214,5 +214,9 @@ const instruction_t instructions[] = {
     }},
     {name: "ebreak",fmt: I_TYPE, opcode: 0b1110011, ops_len: -1, ops: (operand_t[]) {
 	{type: IMM, imm_opt: IMM_1}
+    }},
+
+    {name: "csrrs", fmt: I_TYPE, opcode: 0b1110011, funct3: 0x2, ops_len: 3, ops: (operand_t[]) {
+	{type: REG, reg_opt: RD}, {type: REG, reg_opt: RS1}, {type: IMM, imm_opt: ABS}
     }},
 };

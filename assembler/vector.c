@@ -149,8 +149,9 @@ vector_swap(vector_t *v, size_t index_a, size_t index_b)
 size_t
 _vector_partition(vector_t *v, elem_cmp_fn_t cmp_fn, size_t lo, size_t hi)
 {
-	void *pivot = vector_get(v, (hi + lo) / 2);
-	// printf("p=%d, pivot=%d\n", (hi + lo) / 2, * (int *) pivot);
+	size_t pivot_pos = (hi + lo) / 2;
+	void *pivot = vector_get(v, pivot_pos);
+	// printf("pivot=%ld\n", pivot_pos);
 	void *elem;
 	int i = lo - 1;
 	int j = hi + 1;
@@ -170,17 +171,24 @@ _vector_partition(vector_t *v, elem_cmp_fn_t cmp_fn, size_t lo, size_t hi)
 			return j;
 		}
 		vector_swap(v, (size_t) i, (size_t) j);
+		if (i == pivot_pos) {
+			pivot_pos = j;
+			pivot = vector_get(v, pivot_pos);
+		} else if (j == pivot_pos) {
+			pivot_pos = i;
+			pivot = vector_get(v, pivot_pos);
+		}
 	}
 }
 
 void
 _vector_quicksort(vector_t *v, elem_cmp_fn_t cmp_fn, size_t lo, size_t hi)
 {
-	// printf("_vector_quicksort lo=%d, hi=%d\n", lo, hi);
+	// printf("_vector_quicksort lo=%ld, hi=%ld\n", lo, hi);
 	size_t p;
 	if (lo < hi) {
 		p = _vector_partition(v, cmp_fn, lo, hi);
-		// printf("p=%d\n", p);
+		// printf("p=%ld\n", p);
 		_vector_quicksort(v, cmp_fn, lo, p);
 		_vector_quicksort(v, cmp_fn, p + 1, hi);
 	}
