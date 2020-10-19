@@ -525,6 +525,18 @@ eval_directive(context_t *ctx, string_t *dir, vector_t *args, sexpr_t *res)
 			TRY(write_word(ctx, LIST_GET(args, 0)->integer));
 		}
 		return OK;
+	} else if (string_cmp_c(dir, ".lo") == EQUAL) {
+		TRY(eval_args(ctx, args));
+		TRY(validate_args(args, 1, (sexpr_type_t[]) { INTEGER }));
+		*res = *LIST_GET(args, 0);
+		res->integer = ((uint32_t) res->integer) & 0xfff;
+		return OK;
+	} else if (string_cmp_c(dir, ".hi") == EQUAL) {
+		TRY(eval_args(ctx, args));
+		TRY(validate_args(args, 1, (sexpr_type_t[]) { INTEGER }));
+		*res = *LIST_GET(args, 0);
+		res->integer = ((uint32_t) res->integer) >> 12;
+		return OK;
  	} else {
 		printf("DBG Unknown dir: ");
 		string_write(dir, stdout);
@@ -659,8 +671,9 @@ eval_inst(context_t *ctx, string_t *name, vector_t *args, sexpr_t *res)
 		word |= (imm & (1 << 12)) >> 12 << 31;
 		break;
 	case U_TYPE:
+		if ((uint32_t) imm >= (1 << 20)) { return ERR_IMM_OUT_RANGE; }
 		word |= rd << 7;
-		word |= (imm & (0xfffff000)) >> 12 << 12;
+		word |= imm << 12;
 		break;
 	case J_TYPE:
 		if ((uint32_t) imm >= (1 << 21)) { return ERR_IMM_OUT_RANGE; }
