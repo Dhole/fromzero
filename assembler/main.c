@@ -42,12 +42,12 @@ cmp_t
 symbol_cmp(symbol_t *a, symbol_t *b)
 {
 	cmp_t c;
-	printf("A:");
-	string_write(&a->label, stdout);
-	printf(" B:");
-	string_write(&b->label, stdout);
+	// printf("A:");
+	// string_write(&a->label, stdout);
+	// printf(" B:");
+	// string_write(&b->label, stdout);
 	c = string_cmp(&a->label, &b->label);
-	printf(" (%d)\n", c); // A < B (-1)
+	// printf(" (%d)\n", c); // A < B (-1)
 	return c;
 	// return string_cmp(&a->label, &b->label);
 }
@@ -81,8 +81,7 @@ context_init(context_t *ctx)
 	ctx->out_path = NULL;
 	ctx->out_file = NULL;
 
-	TRY(vector_init(&ctx->sym_table, sizeof(symbol_t), 0,
-			       (void (*)(void *)) symbol_free));
+	TRY(vector_init(&ctx->sym_table, sizeof(symbol_t), 0));
 
 	ctx->linum = 1;
 	ctx->colnum = 0;
@@ -120,7 +119,7 @@ context_reset_src_file(context_t *ctx)
 void
 context_free(context_t *ctx)
 {
-	vector_free(&ctx->sym_table);
+	vector_free(&ctx->sym_table, (void (*)(void *)) symbol_free);
 	if (ctx->src_file != NULL) {
 		fclose(ctx->src_file);
 		ctx->src_file = NULL;
@@ -209,7 +208,7 @@ sexpr_free(sexpr_t *sexpr)
 		break;
 	case LIST:
 	case QUOTE_LIST:
-		vector_free(&sexpr->list);
+		vector_free(&sexpr->list, (void (*)(void *)) sexpr_free);
 		break;
 	}
 	sexpr->type = NIL;
@@ -403,8 +402,7 @@ parse(context_t *ctx, sexpr_t *sexpr, int level)
 				sexpr->type = LIST;
 			}
 			quote = false;
-			TRY(vector_init(&sexpr->list, sizeof(sexpr_t), 2,
-					  (void (*)(void *)) sexpr_free));
+			TRY(vector_init(&sexpr->list, sizeof(sexpr_t), 2));
 			TRY(parse(ctx, sexpr, level+1));
 			if (level == 0) {
 				return OK;
@@ -479,15 +477,15 @@ eval_args(context_t *ctx, vector_t *args)
 	return OK;
 }
 error_t
-dir_symbol(context_t *ctx, string_t *name)
+dir_symbol(context_t *ctx, sexpr_t *name) // name->type == SYMBOL
 {
-	error_t err;
  	symbol_t symbol;
 
 	if (ctx->pass != 1) {
 		return OK;
 	}
-	TRY(string_set(&symbol.label, name));
+	symbol.label = name->symbol;
+	name->type = NIL;
 	symbol.addr = ctx->addr;
 	return vector_push(&ctx->sym_table, &symbol);
 }
@@ -551,7 +549,7 @@ eval_inst(context_t *ctx, string_t *name, vector_t *args, sexpr_t *res)
 	error_t err;
 	int i;
 	uint32_t word = 0;
-	uint8_t bytes[4];
+	// uint8_t bytes[4];
 	uint32_t rd = 0, rs1 = 0, rs2 = 0;
 	int32_t imm = 0;
 	sexpr_t *arg;
@@ -693,12 +691,12 @@ eval_inst(context_t *ctx, string_t *name, vector_t *args, sexpr_t *res)
 	// 	printf("DBG ret=%ld\n", ret);
 	// 	return ERR_IO;
 	// }
-	bytes[0] = (word & (0xff << (0 * 8))) >> (0 * 8);
-	bytes[1] = (word & (0xff << (1 * 8))) >> (1 * 8);
-	bytes[2] = (word & (0xff << (2 * 8))) >> (2 * 8);
-	bytes[3] = (word & (0xff << (3 * 8))) >> (3 * 8);
-	printf("inst: %02x %02x %02x %02x\n",
-	       bytes[0], bytes[1], bytes[2], bytes[3]);
+	// bytes[0] = (word & (0xff << (0 * 8))) >> (0 * 8);
+	// bytes[1] = (word & (0xff << (1 * 8))) >> (1 * 8);
+	// bytes[2] = (word & (0xff << (2 * 8))) >> (2 * 8);
+	// bytes[3] = (word & (0xff << (3 * 8))) >> (3 * 8);
+	// printf("inst: %02x %02x %02x %02x\n",
+	//        bytes[0], bytes[1], bytes[2], bytes[3]);
 
 	return OK;
 }
@@ -711,7 +709,7 @@ eval_fn(context_t *ctx, string_t *fn, vector_t *args, sexpr_t *res)
  	if (string_cmp_c(fn, "$") == EQUAL) {
 		TRY(eval_args(ctx, args));
 		TRY(validate_args(args, 1, (sexpr_type_t[]) { SYMBOL }));
-		return dir_symbol(ctx, &LIST_GET(args, 0)->symbol);
+		return dir_symbol(ctx, LIST_GET(args, 0));
 	} else if (string_cmp_c(fn, "@") == EQUAL) {
 		TRY(eval_args(ctx, args));
 		TRY(validate_args(args, 1, (sexpr_type_t[]) { INTEGER }));
@@ -938,8 +936,8 @@ main(int argc, char **argv)
 			goto main_free;
 		}
 		sexpr_init(&res);
-		dbg_print_sexpr(&sexpr);
-		printf("\n");
+		// dbg_print_sexpr(&sexpr);
+		// printf("\n");
 
 		err = eval(&ctx, &sexpr, &res);
 		if (err != OK) {
@@ -950,11 +948,11 @@ main(int argc, char **argv)
 		sexpr_free(&res);
 
 	}
-	printf("\n---\n\n");
-	dbg_print_sym_table(&ctx.sym_table);
+	// printf("\n---\n\n");
+	// dbg_print_sym_table(&ctx.sym_table);
 	vector_sort(&ctx.sym_table, (cmp_t (*)(void *, void *)) symbol_cmp);
-	printf("\n---\n\n");
-	dbg_print_sym_table(&ctx.sym_table);
+	// printf("\n---\n\n");
+	// dbg_print_sym_table(&ctx.sym_table);
 
 	// Find repetitions in the symbol table
 	string_t *prev_label = NULL;
@@ -992,8 +990,8 @@ main(int argc, char **argv)
 			goto main_free;
 		}
 		sexpr_init(&res);
-		dbg_print_sexpr(&sexpr);
-		printf("\n");
+		// dbg_print_sexpr(&sexpr);
+		// printf("\n");
 
 		err = eval(&ctx, &sexpr, &res);
 		if (err != OK) {

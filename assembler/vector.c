@@ -11,7 +11,7 @@
 #include "error.h"
 
 error_t
-vector_init(vector_t *v, size_t elem_size, uint16_t init_capacity, elem_free_fn_t *elem_free_fn)
+vector_init(vector_t *v, size_t elem_size, uint16_t init_capacity)
 {
 	v->data = malloc((size_t) init_capacity * elem_size);
 	if (v->data == NULL && init_capacity > 0) {
@@ -20,16 +20,15 @@ vector_init(vector_t *v, size_t elem_size, uint16_t init_capacity, elem_free_fn_
 	v->elem_size = (uint16_t) elem_size;
 	v->length = 0;
 	v->capacity = init_capacity;
-	v->elem_free_fn = elem_free_fn;
 	return OK;
 }
 
 vector_t *
-vector_new(size_t elem_size, uint16_t init_capacity, elem_free_fn_t *elem_free_fn)
+vector_new(size_t elem_size, uint16_t init_capacity)
 {
 	vector_t *v;
 	v = calloc(1, sizeof(vector_t));
-	if (vector_init(v, elem_size, init_capacity, elem_free_fn) != OK) {
+	if (vector_init(v, elem_size, init_capacity) != OK) {
 		return NULL;
 	}
 	return v;
@@ -62,7 +61,7 @@ vector_get(vector_t *v, size_t index)
 }
 
 error_t
-vector_pop_front(vector_t *v, void *elem)
+vector_pop_front(vector_t *v, void *elem, elem_free_fn_t *elem_free_fn)
 {
 	int i;
 	if (v->length == 0) {
@@ -70,8 +69,8 @@ vector_pop_front(vector_t *v, void *elem)
 	}
 	if (elem != NULL) {
 		memcpy(elem, v->data, v->elem_size);
-	} else if (v->elem_free_fn != NULL) {
-		v->elem_free_fn(v->data);
+	} else if (elem_free_fn != NULL) {
+		elem_free_fn(v->data);
 	}
 	for (i = 1; i < v->length; i++) {
 		memcpy(v->data + v->elem_size * (i - 1), v->data + v->elem_size * i, v->elem_size);
@@ -81,21 +80,21 @@ vector_pop_front(vector_t *v, void *elem)
 }
 
 void
-vector_clear(vector_t *v)
+vector_clear(vector_t *v, elem_free_fn_t *elem_free_fn)
 {
 	int i;
-	if (v->elem_free_fn != NULL) {
+	if (elem_free_fn != NULL) {
 		for (i = 0; i < v->length; i++) {
-			v->elem_free_fn(vector_get(v, i));
+			elem_free_fn(vector_get(v, i));
 		}
 	}
 	v->length = 0;
 }
 
 void
-vector_free(vector_t *v)
+vector_free(vector_t *v, elem_free_fn_t *elem_free_fn)
 {
-	vector_clear(v);
+	vector_clear(v, elem_free_fn);
 	if (v->data != NULL) {
 		free(v->data);
 		v->data = NULL;
@@ -104,12 +103,12 @@ vector_free(vector_t *v)
 }
 
 void
-vector_delete(vector_t *v)
+vector_delete(vector_t *v, elem_free_fn_t *elem_free_fn)
 {
 	if (v == NULL) {
 		return;
 	}
-	vector_free(v);
+	vector_free(v, elem_free_fn);
 	free(v);
 }
 
@@ -121,7 +120,7 @@ vector_push(vector_t *v, void *elem)
 		if (v->capacity == 0) {
 			new_capacity = 1;
 		} else {
-			new_capacity = v->capacity * 2;
+			new_capacity = v->capacity + 4;
 		}
 		if (vector_resize(v, new_capacity) != OK) {
 			return ERR_NO_MEM;
@@ -280,7 +279,7 @@ main()
 	//
 	// Test copy elements (NULL elem_free_fn)
 	//
-	assert_not_null(v = vector_new(sizeof(int), 0, NULL));
+	assert_not_null(v = vector_new(sizeof(int), 0));
 	// Test push
 	for (i = 0; i < 10; i++) {
 		x = i;
@@ -299,16 +298,16 @@ main()
 	x = * (int *) vector_get(v, 3);
 	assert_equal(x, 2);
 	// Test pop_front
-	assert_equal(vector_pop_front(v, &x), OK);
+	assert_equal(vector_pop_front(v, &x, NULL), OK);
 	assert_equal(x, 0);
 	assert_equal(v->length, 9);
 	// Test delete
-	vector_delete(v);
+	vector_delete(v, NULL);
 
 	//
 	// Test sort
 	//
-	assert_not_null(v = vector_new(sizeof(int), 0, NULL));
+	assert_not_null(v = vector_new(sizeof(int), 0));
 	x = 8; assert_equal(vector_push(v, &x), OK);
 	x = 1; assert_equal(vector_push(v, &x), OK);
 	x = 4; assert_equal(vector_push(v, &x), OK);
@@ -342,19 +341,19 @@ main()
 	key = 6; y = (int *) vector_bin_search(v, search_cmp, &key); assert_null(y);;
 	key = 9; y = (int *) vector_bin_search(v, search_cmp, &key); assert_null(y);;
 
-	vector_delete(v);
+	vector_delete(v, NULL);
 
 	//
 	// Test reference elements (NOT NULL elem_free_fn)
 	//
 	foo_t f;
-	assert_not_null(v = vector_new(sizeof(foo_t), 0, (void (*)(void *)) foo_free));
+	assert_not_null(v = vector_new(sizeof(foo_t), 0));
 	// Test push
 	for (i = 0; i < 10; i++) {
 		assert_equal(foo_init(&f), OK);
 		assert_equal(vector_push(v, &f), OK);
 	}
 	// Test delete
-	vector_delete(v);
+	vector_delete(v, (void (*)(void *)) foo_free);
 }
 #endif

@@ -26,3 +26,19 @@ Disassembly test:
 ```
 echo 'pd 20' | r2 -a riscv -b 32 -m 0 test-rv32i.a.bin
 ```
+
+Memory profiling:
+
+- Recording
+```
+valgrind --tool=massif --ignore-fn=_IO_file_doallocate --ignore-fn=__fopen_internal  ./main test-led.asm test-led.bin
+```
+
+- View results
+```
+ms_print massif.out.1240626
+```
+or
+```
+massif-visualizer massif.out.1240737
+```

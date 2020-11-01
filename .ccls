@@ -1,0 +1,4 @@
+clang
+%c -std=gnu11
+%h -std=gnu11
+-Isamples/gd32vf103inator/include

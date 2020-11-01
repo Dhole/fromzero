@@ -1,0 +1,4 @@
+[submodule "samples/gd32vf103inator"]
+	path = samples/gd32vf103inator
+	url = https://github.com/esmil/gd32vf103inator.git
+	branch = master
