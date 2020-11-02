@@ -2,3 +2,6 @@
 	path = samples/gd32vf103inator
 	url = https://github.com/esmil/gd32vf103inator.git
 	branch = master
+[submodule "samples/GD32VF103_Firmware_Library"]
+	path = samples/GD32VF103_Firmware_Library
+	url = https://github.com/a-v-s/GD32VF103_Firmware_Library
