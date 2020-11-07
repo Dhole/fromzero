@@ -2,3 +2,8 @@ clang
 %c -std=gnu11
 %h -std=gnu11
 -Isamples/gd32vf103inator/include
+-Isamples/GD32VF103_Firmware_Library/Firmware/GD32VF103_standard_peripheral
+-Isamples/GD32VF103_Firmware_Library/Firmware/GD32VF103_standard_peripheral/Include
+-Isamples/GD32VF103_Firmware_Library/Firmware/RISCV/drivers
+-Isamples/GD32VF103_Firmware_Library/Utilities
+-Isamples/GD32VF103_Firmware_Library/Utilities/LCD_common
