@@ -3,10 +3,13 @@
 
 #include "gd32vf103_gpio.h"
 
-#define HSYNC_PORT GPIOB
-#define HSYNC_PIN GPIO_PIN_9
-#define VSYNC_PORT GPIOB
-#define VSYNC_PIN GPIO_PIN_8
+#define HSYNC_PORT GPIOA
+#define HSYNC_PIN GPIO_PIN_0
+#define VSYNC_PORT GPIOA
+#define VSYNC_PIN GPIO_PIN_3
+
+#define GREEN_PORT GPIOA
+#define GREEN_PIN GPIO_PIN_7
 
 // 800x600@60Hz
 
@@ -28,7 +31,7 @@
 
 // 640x480@60Hz
 
-#define PIXEL_FREQ 20000000
+#define PIXEL_FREQ 25000000
 
 #define H_FRONT_PORCH 16
 #define H_SYNC_PULSE 96

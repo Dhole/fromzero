@@ -89,11 +89,14 @@ void timer_config(void)
     timer_initpara.alignedmode       = TIMER_COUNTER_EDGE;
     timer_initpara.counterdirection  = TIMER_COUNTER_UP;
     // timer_initpara.period            = (H_FRONT_PORCH * PIXEL_FREQ_MUL) / 5 - 1;
-    timer_initpara.period            = 80 - 1;
+    // timer_initpara.period            = 80 - 1;
+    timer_initpara.period            = H_LINE * PIXEL_FREQ_MUL - 1 - 62;
     timer_initpara.clockdivision     = TIMER_CKDIV_DIV1;
     // timer_initpara.repetitioncounter = 0;
     timer_init(TIMER1, &timer_initpara);
 
+
+    TIMER_INTF(TIMER1) = (~(uint32_t)TIMER_INT_FLAG_UP);
     timer_interrupt_enable(TIMER1, TIMER_INT_UP);
     timer_interrupt_disable(TIMER1, TIMER_INT_CH0);
     timer_interrupt_disable(TIMER1, TIMER_INT_CH1);
@@ -235,13 +238,13 @@ int main(void)
 
     gpio_config();
 
-    gpio_bit_set(GPIOA, GPIO_PIN_1);
-    gpio_bit_set(GPIOA, GPIO_PIN_2);
-    gpio_init(GPIOA, GPIO_MODE_OUT_PP, GPIO_OSPEED_50MHZ, GPIO_PIN_1 | GPIO_PIN_2);
+    // gpio_bit_set(GPIOA, GPIO_PIN_1);
+    // gpio_bit_set(GPIOA, GPIO_PIN_2);
+    // gpio_init(GPIOA, GPIO_MODE_OUT_PP, GPIO_OSPEED_50MHZ, GPIO_PIN_1 | GPIO_PIN_2);
 
     gpio_bit_reset(HSYNC_PORT, HSYNC_PIN);
     gpio_bit_reset(VSYNC_PORT, HSYNC_PIN);
-    gpio_init(HSYNC_PORT, GPIO_MODE_OUT_PP, GPIO_OSPEED_50MHZ, HSYNC_PIN | VSYNC_PIN);
+    gpio_init(HSYNC_PORT, GPIO_MODE_OUT_PP, GPIO_OSPEED_50MHZ, HSYNC_PIN | VSYNC_PIN | GREEN_PIN);
 
     eclic_global_interrupt_enable();
     eclic_set_nlbits(ECLIC_GROUP_LEVEL3_PRIO1);
