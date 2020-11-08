@@ -41,27 +41,124 @@ OF SUCH DAMAGE.
 
 #include "config.h"
 
-/* configure the GPIO ports */
-void gpio_config(void);
-/* configure the TIMER peripheral */
-void timer_config(void);
+#define  ARRAYSIZE         10
 
-/**
-    \brief      configure the GPIO ports
-    \param[in]  none
-    \param[out] none
-    \retval     none
-  */
-void gpio_config(void)
+uint8_t spi0_send_array[ARRAYSIZE] = {0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA};
+// uint8_t spi2_send_array[ARRAYSIZE] = {0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA};
+// uint8_t spi0_receive_array[ARRAYSIZE]; 
+// uint8_t spi2_receive_array[ARRAYSIZE];
+
+void rcu_config(void)
 {
     rcu_periph_clock_enable(RCU_GPIOA);
     rcu_periph_clock_enable(RCU_GPIOB);
-    // rcu_periph_clock_enable(RCU_AF);
+    rcu_periph_clock_enable(RCU_GPIOC);
+    rcu_periph_clock_enable(RCU_AF);
+    rcu_periph_clock_enable(RCU_DMA0);
+    rcu_periph_clock_enable(RCU_DMA1);
+    rcu_periph_clock_enable(RCU_SPI0);
+    // rcu_periph_clock_enable(RCU_SPI2);
+}
+
+void gpio_config(void)
+{
+    gpio_bit_reset(HSYNC_PORT, HSYNC_PIN);
+    gpio_bit_reset(VSYNC_PORT, HSYNC_PIN);
+    gpio_init(HSYNC_PORT, GPIO_MODE_OUT_PP, GPIO_OSPEED_50MHZ, HSYNC_PIN | VSYNC_PIN);
+
+    /* SPI0 GPIO config:SCK/PA5, MISO/PA6, MOSI/PA7 */
+    gpio_init(GPIOA, GPIO_MODE_AF_PP, GPIO_OSPEED_50MHZ, GPIO_PIN_5 | GPIO_PIN_7);
+    gpio_init(GPIOA, GPIO_MODE_IN_FLOATING, GPIO_OSPEED_50MHZ, GPIO_PIN_6);
+    
+    // /* SPI2 GPIO config:SCK/PC10, MISO/PC11, MOSI/PC12 */
+    // gpio_pin_remap_config(GPIO_SPI2_REMAP, ENABLE);
+    // gpio_init(GPIOC, GPIO_MODE_IN_FLOATING, GPIO_OSPEED_50MHZ, GPIO_PIN_10 | GPIO_PIN_12);
+    // gpio_init(GPIOC, GPIO_MODE_AF_PP, GPIO_OSPEED_50MHZ, GPIO_PIN_11);
 
     /*Configure PA0(TIMER1 CH0) as alternate function*/
     // gpio_init(GPIOA, GPIO_MODE_AF_PP, GPIO_OSPEED_50MHZ, GPIO_PIN_0);
 }
 
+void spi_config(void)
+{
+    spi_parameter_struct spi_init_struct;
+    /* deinitilize SPI and the parameters */
+    spi_i2s_deinit(SPI0);
+    // spi_i2s_deinit(SPI2);
+    spi_struct_para_init(&spi_init_struct);
+
+    /* SPI0 parameter config */
+    spi_init_struct.trans_mode           = SPI_TRANSMODE_BDTRANSMIT;
+    spi_init_struct.device_mode          = SPI_MASTER;
+    spi_init_struct.frame_size           = SPI_FRAMESIZE_8BIT;
+    spi_init_struct.clock_polarity_phase = SPI_CK_PL_HIGH_PH_2EDGE;
+    spi_init_struct.nss                  = SPI_NSS_SOFT;
+    spi_init_struct.prescale             = SPI_PSC_8;
+    spi_init_struct.endian               = SPI_ENDIAN_MSB;
+    spi_init(SPI0, &spi_init_struct);
+
+    // /* SPI2 parameter config */
+    // spi_init_struct.device_mode = SPI_SLAVE;
+    // spi_init_struct.nss         = SPI_NSS_SOFT;
+    // spi_init(SPI2, &spi_init_struct);
+
+}
+
+void dma_config(void)
+{
+    dma_parameter_struct dma_init_struct;
+    
+    /* SPI0 transmit dma config:DMA0-DMA_CH2 */
+    dma_deinit(DMA0, DMA_CH2);
+    dma_struct_para_init(&dma_init_struct);
+    
+    dma_init_struct.periph_addr  = (uint32_t)&SPI_DATA(SPI0);
+    dma_init_struct.memory_addr  = (uint32_t)spi0_send_array;
+    dma_init_struct.direction    = DMA_MEMORY_TO_PERIPHERAL;
+    dma_init_struct.memory_width = DMA_MEMORY_WIDTH_8BIT;
+    dma_init_struct.periph_width = DMA_PERIPHERAL_WIDTH_8BIT;
+    dma_init_struct.priority     = DMA_PRIORITY_LOW;
+    dma_init_struct.number       = ARRAYSIZE;
+    dma_init_struct.periph_inc   = DMA_PERIPH_INCREASE_DISABLE;
+    dma_init_struct.memory_inc   = DMA_MEMORY_INCREASE_ENABLE;
+    dma_init(DMA0, DMA_CH2, &dma_init_struct);
+    /* configure DMA mode */
+    dma_circulation_disable(DMA0, DMA_CH2);
+    dma_memory_to_memory_disable(DMA0, DMA_CH2);
+
+    /* SPI0 receive dma config:DMA0-DMA_CH1 */
+    // dma_deinit(DMA0, DMA_CH1);
+    // dma_init_struct.periph_addr  = (uint32_t)&SPI_DATA(SPI0);
+    // dma_init_struct.memory_addr  = (uint32_t)spi0_receive_array;
+    // dma_init_struct.direction    = DMA_PERIPHERAL_TO_MEMORY;
+    // dma_init_struct.priority     = DMA_PRIORITY_HIGH;
+    // dma_init(DMA0, DMA_CH1, &dma_init_struct);
+    // /* configure DMA mode */
+    // dma_circulation_disable(DMA0, DMA_CH1);
+    // dma_memory_to_memory_disable(DMA0, DMA_CH1);
+
+    // /* SPI2 transmit dma config:DMA1,DMA_CH1 */
+    // dma_deinit(DMA1, DMA_CH1);
+    // dma_init_struct.periph_addr  = (uint32_t)&SPI_DATA(SPI2);
+    // dma_init_struct.memory_addr  = (uint32_t)spi2_send_array;
+    // dma_init_struct.direction    = DMA_MEMORY_TO_PERIPHERAL;
+    // dma_init_struct.priority     = DMA_PRIORITY_MEDIUM;
+    // dma_init(DMA1, DMA_CH1, &dma_init_struct);
+    // /* configure DMA mode */
+    // dma_circulation_disable(DMA1, DMA_CH1);
+    // dma_memory_to_memory_disable(DMA1, DMA_CH1);
+
+    // /* SPI2 receive dma config:DMA1,DMA_CH0 */
+    // dma_deinit(DMA1, DMA_CH0);
+    // dma_init_struct.periph_addr  = (uint32_t)&SPI_DATA(SPI2);
+    // dma_init_struct.memory_addr  = (uint32_t)spi2_receive_array;
+    // dma_init_struct.direction    = DMA_PERIPHERAL_TO_MEMORY;
+    // dma_init_struct.priority     = DMA_PRIORITY_ULTRA_HIGH;
+    // dma_init(DMA1, DMA_CH0, &dma_init_struct);
+    // /* configure DMA mode */
+    // dma_circulation_disable(DMA1, DMA_CH0);
+    // dma_memory_to_memory_disable(DMA1, DMA_CH0);
+}
 
 /**
     \brief      configure the TIMER peripheral
@@ -90,7 +187,7 @@ void timer_config(void)
     timer_initpara.counterdirection  = TIMER_COUNTER_UP;
     // timer_initpara.period            = (H_FRONT_PORCH * PIXEL_FREQ_MUL) / 5 - 1;
     // timer_initpara.period            = 80 - 1;
-    timer_initpara.period            = H_LINE * PIXEL_FREQ_MUL - 1 - 62;
+    timer_initpara.period            = H_LINE * PIXEL_FREQ_MUL - 1;
     timer_initpara.clockdivision     = TIMER_CKDIV_DIV1;
     // timer_initpara.repetitioncounter = 0;
     timer_init(TIMER1, &timer_initpara);
@@ -236,15 +333,17 @@ int main(void)
 
     //////
 
+    rcu_config();
     gpio_config();
+    dma_config();
+    spi_config();
+
+    // spi_enable(SPI2);
+    spi_enable(SPI0);
 
     // gpio_bit_set(GPIOA, GPIO_PIN_1);
     // gpio_bit_set(GPIOA, GPIO_PIN_2);
     // gpio_init(GPIOA, GPIO_MODE_OUT_PP, GPIO_OSPEED_50MHZ, GPIO_PIN_1 | GPIO_PIN_2);
-
-    gpio_bit_reset(HSYNC_PORT, HSYNC_PIN);
-    gpio_bit_reset(VSYNC_PORT, HSYNC_PIN);
-    gpio_init(HSYNC_PORT, GPIO_MODE_OUT_PP, GPIO_OSPEED_50MHZ, HSYNC_PIN | VSYNC_PIN | GREEN_PIN);
 
     eclic_global_interrupt_enable();
     eclic_set_nlbits(ECLIC_GROUP_LEVEL3_PRIO1);

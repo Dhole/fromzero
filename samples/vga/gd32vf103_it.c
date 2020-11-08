@@ -35,8 +35,27 @@ OF SUCH DAMAGE.
 #include "gd32vf103v_eval.h"
 #include "gd32vf103_timer.h"
 #include "gd32vf103_eclic.h"
+#include "gd32vf103_spi.h"
 
 #include "config.h"
+
+#define  ARRAYSIZE         10
+uint8_t array[ARRAYSIZE] = {0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA};
+
+#define SIZE 9
+uint8_t data[9][SIZE] = {
+  {0x88,0x6,0x18,0x0,0x8,0x80,0x1,0x80,0x80,},
+  {0x88,0x2,0x8,0x0,0x8,0x80,0x0,0x80,0x80,},
+  {0x89,0xc2,0x8,0x70,0x8,0x9c,0xb8,0x87,0x80,},
+  {0xfa,0x22,0x8,0x88,0x8,0xa2,0xc0,0x88,0x80,},
+  {0x8b,0xe2,0x8,0x88,0xa,0xa2,0x80,0x88,0x80,},
+  {0x8a,0x2,0x8,0x88,0xa,0xa2,0x80,0x88,0x80,},
+  {0x8a,0x2,0x8,0x88,0xd,0xa2,0x80,0x88,0x80,},
+  {0x89,0xe7,0x1c,0x70,0x8,0x9c,0x81,0xc7,0x80,},
+  {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,},
+};
+
+uint8_t *next_line[2] = {data[0], data[0]};
 
 enum sync_state {
     FRONT_PORCH,
@@ -59,32 +78,8 @@ static uint32_t line = 0;
 void TIMER1_IRQHandler(void)
 {
     if ((TIMER_INTF(TIMER1) & TIMER_INT_FLAG_UP)) {
-        // eclic_clear_pending(TIMER1_IRQn);
-        // eclic_disable_interrupt(TIMER1_IRQn);
-        // if (inside) {
-        //     return;
-        // }
-        // inside = 1;
-        // FlagStatus current;
-        // if(SET == timer_interrupt_flag_get(TIMER1, TIMER_INT_UP)){
         TIMER_INTF(TIMER1) = (~(uint32_t)TIMER_INT_FLAG_UP);
-            /* clear channel 0 interrupt bit */
-            // timer_interrupt_flag_clear(TIMER1, TIMER_INT_FLAG_UP);
-            // current = gpio_output_bit_get(GPIOA, GPIO_PIN_1);
-            // current = gpio_output_bit_get(HSYNC_PORT, HSYNC_PIN);
-            // if (current) {
-            //     // gpio_bit_reset(GPIOA, GPIO_PIN_1);
-            //     gpio_bit_reset(HSYNC_PORT, HSYNC_PIN);
-            //     current = 0;
-            // } else {
-            //     // gpio_bit_set(GPIOA, GPIO_PIN_1);
-            //     gpio_bit_set(HSYNC_PORT, HSYNC_PIN);
-            //     current = 1;
-            // }
-            // TIMER_CNT(TIMER1) = 700 * 5;
-            // TIMER_INTF(TIMER1) = (~(uint32_t)TIMER_INT_FLAG_UP);
-        // }
-        // inside = 0;
+
         // switch (h_state) {
         // case FRONT_PORCH:
         //     gpio_bit_set(HSYNC_PORT, HSYNC_PIN);
@@ -109,63 +104,52 @@ void TIMER1_IRQHandler(void)
         //     break;
         // }
 
-        // volatile uint32_t cnt;
-        // do {
-        //     cnt = timer_counter_read(TIMER1);
-        // } while (cnt > 10);
+        // gpio_bit_reset(GREEN_PORT, GREEN_PIN);
 
-        // volatile uint32_t cnt0, cnt1, cnt2, cnt3;
-        // cnt0 = timer_counter_read(TIMER1);
-        // cnt1 = timer_counter_read(TIMER1);
-        // cnt2 = timer_counter_read(TIMER1);
-        // cnt3 = timer_counter_read(TIMER1);
-        // if (cnt0 < 10) {
-        //         gpio_bit_reset(HSYNC_PORT, HSYNC_PIN);
-        // } else {
-        //         gpio_bit_set(HSYNC_PORT, HSYNC_PIN);
-        // }
-        // if (timer_counter_read(TIMER1) == 0) {
-        //     return;
-        // }
-
-        gpio_bit_reset(GREEN_PORT, GREEN_PIN);
-
-        if (line < V_FRONT_PORCH) {
+        if (line < V_ACTIVE_VIDEO) {
+            // V_ACTIVE_VIDEO
+            // gpio_bit_set(VSYNC_PORT, VSYNC_PIN);
+        } else if (line < V_ACTIVE_VIDEO + V_FRONT_PORCH) {
             // V_FRONT_PORCH
-            gpio_bit_set(VSYNC_PORT, VSYNC_PIN);
-        } else if (line < V_FRONT_PORCH + V_SYNC_PULSE) {
+            // gpio_bit_set(VSYNC_PORT, VSYNC_PIN);
+        } else if (line < V_ACTIVE_VIDEO + V_FRONT_PORCH + V_SYNC_PULSE) {
             // V_SYNC_PULSE
             gpio_bit_reset(VSYNC_PORT, VSYNC_PIN);
-        } else if (line < V_FRONT_PORCH + V_SYNC_PULSE + V_BACK_PORCH) {
-            // V_BACK_PORCH
-            gpio_bit_set(VSYNC_PORT, VSYNC_PIN);
         } else {
-            // V_ACTIVE_VIDEO
+            // V_BACK_PORCH
             gpio_bit_set(VSYNC_PORT, VSYNC_PIN);
         }
 
-        timer_counter_value_config(TIMER1, 0);
+        // timer_counter_value_config(TIMER1, 0);
 
         // // H_FRONT_PORCH
-        gpio_bit_set(HSYNC_PORT, HSYNC_PIN);
-        while (timer_counter_read(TIMER1) < H_FRONT_PORCH * PIXEL_FREQ_MUL - 10);
+        // gpio_bit_set(HSYNC_PORT, HSYNC_PIN);
+        while (timer_counter_read(TIMER1) < H_FRONT_PORCH * PIXEL_FREQ_MUL);
 
         // H_SYNC_PULSE
         gpio_bit_reset(HSYNC_PORT, HSYNC_PIN);
-        while (timer_counter_read(TIMER1) < (H_FRONT_PORCH + H_SYNC_PULSE) * PIXEL_FREQ_MUL - 10);
+        while (timer_counter_read(TIMER1) < (H_FRONT_PORCH + H_SYNC_PULSE) * PIXEL_FREQ_MUL);
 
         // // H_BACK_PORCH
         gpio_bit_set(HSYNC_PORT, HSYNC_PIN);
-        while (timer_counter_read(TIMER1) < (H_FRONT_PORCH + H_SYNC_PULSE + H_BACK_PORCH) * PIXEL_FREQ_MUL - 16);
+        while (timer_counter_read(TIMER1) < (H_FRONT_PORCH + H_SYNC_PULSE + H_BACK_PORCH - 11) * PIXEL_FREQ_MUL);
 
         // H_ACTIVE_VIDEO
-        gpio_bit_set(HSYNC_PORT, HSYNC_PIN);
-        if (line >= V_FRONT_PORCH + V_SYNC_PULSE + V_BACK_PORCH) {
-            if (line % 16 == 0) {
-                gpio_bit_set(GREEN_PORT, GREEN_PIN);
-            } else {
-                gpio_bit_reset(GREEN_PORT, GREEN_PIN);
-            }
+        // gpio_bit_set(HSYNC_PORT, HSYNC_PIN);
+        if (line < H_ACTIVE_VIDEO) {
+        // if (line == 10) {
+            DMA_CHMADDR(DMA0, DMA_CH2) = next_line[line % 2];
+            DMA_CHCNT(DMA0, DMA_CH2) = (SIZE & DMA_CHANNEL_CNT_MASK);
+            dma_flag_clear(DMA0, DMA_CH2, DMA_FLAG_FTF);
+            dma_channel_disable(DMA0, DMA_CH2);
+            dma_channel_enable(DMA0, DMA_CH2);
+            spi_dma_enable(SPI0, SPI_DMA_TRANSMIT);
+            next_line[(line+1)%2] = data[(line/2) % 9];
+            // if (line % 16 == 0 || (line + 1) % 16 == 0) {
+            //     gpio_bit_set(GREEN_PORT, GREEN_PIN);
+            // } else {
+            //     gpio_bit_reset(GREEN_PORT, GREEN_PIN);
+            // }
         }
 
         line++;
