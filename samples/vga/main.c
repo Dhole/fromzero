@@ -43,6 +43,8 @@ OF SUCH DAMAGE.
 
 #define  ARRAYSIZE         10
 
+extern char text[240/8][320/8];
+
 uint8_t spi0_send_array[ARRAYSIZE] = {0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA};
 // uint8_t spi2_send_array[ARRAYSIZE] = {0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA};
 // uint8_t spi0_receive_array[ARRAYSIZE]; 
@@ -94,7 +96,7 @@ void spi_config(void)
     spi_init_struct.clock_polarity_phase = SPI_CK_PL_HIGH_PH_2EDGE;
     spi_init_struct.nss                  = SPI_NSS_SOFT;
     spi_init_struct.prescale             = SPI_PSC_8;
-    spi_init_struct.endian               = SPI_ENDIAN_MSB;
+    spi_init_struct.endian               = SPI_ENDIAN_LSB;
     spi_init(SPI0, &spi_init_struct);
 
     // /* SPI2 parameter config */
@@ -349,6 +351,19 @@ int main(void)
     eclic_set_nlbits(ECLIC_GROUP_LEVEL3_PRIO1);
     eclic_irq_enable(TIMER1_IRQn,1,0);
     timer_config();
+
+    text[4][4 + 0] = 'H';
+    text[4][4 + 1] = 'e';
+    text[4][4 + 2] = 'l';
+    text[4][4 + 3] = 'l';
+    text[4][4 + 4] = 'o';
+    text[4][4 + 5] = ' ';
+    text[4][4 + 6] = 'w';
+    text[4][4 + 7] = 'o';
+    text[4][4 + 8] = 'r';
+    text[4][4 + 9] = 'l';
+    text[4][4 +10] = 'd';
+    text[4][4 +11] = '!';
     while (1) {
         // current = gpio_output_bit_get(GPIOA, GPIO_PIN_2);
         // if (current == SET) {
