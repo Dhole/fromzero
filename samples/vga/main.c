@@ -40,11 +40,119 @@ OF SUCH DAMAGE.
 #include "gd32vf103_gpio.h"
 
 #include "config.h"
+#include "keyboard.h"
 
 // #define  ARRAYSIZE         10
 
 extern char text[240/8][320/8];
 extern uint8_t lines[2][320/8];
+
+extern uint32_t key_buf_len;
+extern uint8_t key_buf[16];
+extern volatile uint8_t key_buf_head;
+extern volatile uint8_t key_buf_tail;
+
+int32_t cursor_x = 1;
+int32_t cursor_y = 1;
+
+void putc(char c)
+{
+  text[cursor_y][cursor_x] = c;
+  cursor_x++;
+  if (cursor_x >= 320/8-1) {
+    cursor_x = 1;
+    cursor_y++;
+    if (cursor_y >= 240/8-1) {
+      cursor_y = 1;
+    }
+  }
+}
+
+char hexchar(uint8_t v)
+{
+  if (v < 10) {
+    return '0' + v;
+  } else {
+    return 'a' + (v - 10);
+  }
+  return '*';
+}
+
+char key2char(uint8_t key)
+{
+  switch (key) {
+    case KEY_A    : return 'a';
+    case KEY_B    : return 'b';
+    case KEY_C    : return 'c';
+    case KEY_D    : return 'd';
+    case KEY_E    : return 'e';
+    case KEY_F    : return 'f';
+    case KEY_G    : return 'g';
+    case KEY_H    : return 'h';
+    case KEY_I    : return 'i';
+    case KEY_J    : return 'j';
+    case KEY_K    : return 'k';
+    case KEY_L    : return 'l';
+    case KEY_M    : return 'm';
+    case KEY_N    : return 'n';
+    case KEY_O    : return 'o';
+    case KEY_P    : return 'p';
+    case KEY_Q    : return 'q';
+    case KEY_R    : return 'r';
+    case KEY_S    : return 's';
+    case KEY_T    : return 't';
+    case KEY_U    : return 'u';
+    case KEY_V    : return 'v';
+    case KEY_W    : return 'w';
+    case KEY_X    : return 'x';
+    case KEY_Y    : return 'y';
+    case KEY_Z    : return 'z';
+    case KEY_SPACE: return ' ';
+    default: return '?';
+  }
+}
+
+enum key_mod key_state = none;
+
+void key_handler(uint8_t code)
+{
+  switch (key_state) {
+    case none:
+      switch (code) {
+        case KEY_ENTER:
+          cursor_y++;
+          cursor_x = 1;
+          if (cursor_y >= 240/8-1) {
+            cursor_y = 1;
+          }
+          break;
+        case KEY_BKSP:
+          cursor_x--;
+          if (cursor_x < 1) {
+            cursor_x = 1;
+          }
+          text[cursor_y][cursor_x] = ' ';
+          break;
+        case KEY_RELEASE:
+          key_state = release;
+          break;
+        default:
+          putc(key2char(code));
+      }
+      break;
+    case release:
+      key_state = none;
+      break;
+  }
+}
+
+void key_handler2(uint8_t code)
+{
+        putc(hexchar((code & 0xf0) >> 4));
+        putc(hexchar((code & 0x0f) >> 0));
+        putc(' ');
+}
+
 
 // uint8_t spi0_send_array[ARRAYSIZE] = {0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA};
 // uint8_t spi2_send_array[ARRAYSIZE] = {0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA};
@@ -356,23 +464,26 @@ int main(void)
     eclic_set_nlbits(ECLIC_GROUP_LEVEL2_PRIO2);
     eclic_irq_enable(TIMER1_IRQn,3, 3);
     // eclic_irq_enable(SPI1_IRQn,2,0);
-    eclic_irq_enable(USART2_IRQn, 0, 0);
+    // eclic_irq_enable(USART2_IRQn, 0, 0);
     timer_config();
-    usart_interrupt_enable(USART2, USART_INT_RBNE);
-    // spi_i2s_interrupt_enable(SPI1, SPI_I2S_INT_RBNE);
+    // usart_interrupt_disable(USART2, USART_INT_RBNE);
+    // usart_interrupt_enable(USART2, USART_INT_RBNE);
+    spi_i2s_interrupt_enable(SPI1, SPI_I2S_INT_RBNE);
 
     spi_enable(SPI0);
     // spi_enable(SPI1);
 
-    int i;
-    for (i = 0; i < 320/8; i++) {
-        text[0][i] = 11 * 16 + 1;
-        text[240/8-1][i] = 11 * 16 + 1;
-    }
-    for (i = 0; i < 240/8; i++) {
-        text[i][0] = '*';
-        text[i][320/8-1] = '*';
-    }
+    // int i;
+    // for (i = 0; i < 320/8; i++) {
+    //     text[0][i] = 11 * 16 + 1;
+    //     text[240/8-1][i] = 11 * 16 + 1;
+    // }
+    // for (i = 1; i < 240/8 -1; i++) {
+    //     // text[i][0] = 11 * 16 + 1;
+    //     // text[i][320/8-1] = 11 * 16 + 1;
+    //     text[i][1] = 11 * 16 + 1;
+    //     text[i][320/8-2] = 11 * 16 + 1;
+    // }
 
 
     // text[4][4 + 0] = 'H';
@@ -387,7 +498,20 @@ int main(void)
     // text[4][4 + 9] = 'l';
     // text[4][4 +10] = 'd';
     // text[4][4 +11] = '!';
+    // char c = 0;
+    // volatile int j = 0;
+    uint8_t key;
     while (1) {
+        if (key_buf_tail != key_buf_head) {
+            // gpio_bit_reset(GPIOA, GPIO_PIN_1);
+            key = key_buf[key_buf_tail];
+            key_buf_tail = (key_buf_tail + 1) % key_buf_len;
+            key_handler(key);
+        }
+        // for (j = 0; j < 0xffffff/50; j++) {
+
+        // }
+        // putc(c++);
         // current = gpio_output_bit_get(GPIOA, GPIO_PIN_2);
         // if (current == SET) {
         //     gpio_bit_reset(GPIOA, GPIO_PIN_2);

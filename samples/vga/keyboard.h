@@ -34,9 +34,8 @@ enum keys {
     KEY_RELEASE = 0xF0,
 };
 
-enum key_state {
-    unpressed,
-    pressed,
+enum key_mod {
+    none,
     release,
 };
 

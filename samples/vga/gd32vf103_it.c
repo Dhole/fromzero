@@ -39,7 +39,6 @@ OF SUCH DAMAGE.
 
 #include "config.h"
 #include "font.h"
-#include "keyboard.h"
 
 // #define  ARRAYSIZE         10
 // uint8_t array[ARRAYSIZE] = {0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA};
@@ -65,8 +64,6 @@ OF SUCH DAMAGE.
 uint8_t lines[2][320/8];
 uint8_t *cur_line = lines[0];
 char text[TEXT_H][TEXT_W];
-int32_t cursor_x = 1;
-int32_t cursor_y = 1;
 // uint8_t next_line_index = 0;
 uint8_t *next_line = lines[0];
 
@@ -76,6 +73,12 @@ enum sync_state {
     BACK_PORCH,
     ACTIVE_VIDEO,
 };
+
+const uint32_t key_buf_len = 16;
+uint8_t key_buf[16];
+volatile uint8_t key_buf_head = 0;
+volatile uint8_t key_buf_tail = 0;
+
 
 // static enum sync_state v_state = FRONT_PORCH;
 
@@ -90,8 +93,10 @@ static uint32_t line = 0;
   */
 void TIMER1_IRQHandler(void)
 {
+    uint8_t code;
     int y;
-    if ((TIMER_INTF(TIMER1) & TIMER_INT_FLAG_UP)) {
+    // No need for if, because we only have a single TIMER1 interrupt enabled
+    // if ((TIMER_INTF(TIMER1) & TIMER_INT_FLAG_UP)) {
         TIMER_INTF(TIMER1) = (~(uint32_t)TIMER_INT_FLAG_UP);
 
         // switch (h_state) {
@@ -139,7 +144,7 @@ void TIMER1_IRQHandler(void)
         // // H_FRONT_PORCH
         // gpio_bit_set(HSYNC_PORT, HSYNC_PIN);
         // cur_line = lines[(line / 2) % 2];
-        cur_line = lines[(line / 2) % 2];
+        cur_line = lines[(line & 0x02) >> 1];
         DMA_CHMADDR(DMA0, DMA_CH2) = (uint32_t) cur_line;
         while (timer_counter_read(TIMER1) < H_FRONT_PORCH * PIXEL_FREQ_MUL - 3);
 
@@ -155,6 +160,7 @@ void TIMER1_IRQHandler(void)
 
         // // H_BACK_PORCH
         gpio_bit_set(HSYNC_PORT, HSYNC_PIN);
+
         while (timer_counter_read(TIMER1) < (H_FRONT_PORCH + H_SYNC_PULSE + H_BACK_PORCH) * PIXEL_FREQ_MUL - 23);
 
         int i;
@@ -205,30 +211,20 @@ void TIMER1_IRQHandler(void)
         if (line == V_FRAME) {
             line = 0;
         }
-    }
-}
+        if ((line & 0x1f) == 0) {
+            if (RESET != usart_flag_get(USART2, USART_FLAG_RBNE)) {
+              code = usart_data_receive(USART2);
+              key_buf[key_buf_head] = code;
+              key_buf_head = (key_buf_head + 1) % key_buf_len;
+              // gpio_bit_reset(GPIOA, GPIO_PIN_1);
+              // text[0][0] = code;
+              // putc(code);
+              // key_handler2(code);
+              // key_handler(code);
+            }
+        }
 
-void putc(char c)
-{
-  text[cursor_y][cursor_x] = c;
-  cursor_x++;
-  if (cursor_x >= 320/8-1) {
-    cursor_x = 1;
-    cursor_y++;
-    if (cursor_y >= 240/8-1) {
-      cursor_y = 1;
-    }
-  }
-}
-
-char hexchar(uint8_t v)
-{
-  if (v < 10) {
-    return '0' + v;
-  } else {
-    return 'a' + (v - 10);
-  }
-  return '*';
+    // }
 }
 
 // void SPI1_IRQHandler(void)
@@ -244,84 +240,48 @@ char hexchar(uint8_t v)
 //         putc(' ');
 //     }
 // }
-
-char key2char(uint8_t key)
-{
-  switch (key) {
-    case KEY_A    : return 'a';
-    case KEY_B    : return 'b';
-    case KEY_C    : return 'c';
-    case KEY_D    : return 'd';
-    case KEY_E    : return 'e';
-    case KEY_F    : return 'f';
-    case KEY_G    : return 'g';
-    case KEY_H    : return 'h';
-    case KEY_I    : return 'i';
-    case KEY_J    : return 'j';
-    case KEY_K    : return 'k';
-    case KEY_L    : return 'l';
-    case KEY_M    : return 'm';
-    case KEY_N    : return 'n';
-    case KEY_O    : return 'o';
-    case KEY_P    : return 'p';
-    case KEY_Q    : return 'q';
-    case KEY_R    : return 'r';
-    case KEY_S    : return 's';
-    case KEY_T    : return 't';
-    case KEY_U    : return 'u';
-    case KEY_V    : return 'v';
-    case KEY_W    : return 'w';
-    case KEY_X    : return 'x';
-    case KEY_Y    : return 'y';
-    case KEY_Z    : return 'z';
-    case KEY_SPACE: return ' ';
-    default: return '?';
-  }
-}
-
-enum key_state key_state = unpressed;
-
-void USART2_IRQHandler(void)
-{
-    uint8_t code;
-    gpio_bit_reset(GPIOA, GPIO_PIN_1);
-    if(RESET != usart_interrupt_flag_get(USART2, USART_INT_FLAG_RBNE)){
-        /* receive data */
-        code = usart_data_receive(USART2);
-        usart_interrupt_disable(USART2, USART_INT_RBNE);
-        usart_interrupt_enable(USART2, USART_INT_RBNE);
-        switch (key_state) {
-          case unpressed:
-            key_state = pressed;
-            switch (code) {
-              case KEY_ENTER:
-                cursor_y++;
-                cursor_x = 1;
-                if (cursor_y >= 240/8-1) {
-                  cursor_y = 1;
-                }
-                break;
-              case KEY_BKSP:
-                cursor_x--;
-                if (cursor_x < 1) {
-                  cursor_x = 1;
-                }
-                break;
-              default:
-                putc(key2char(code));
-            }
-            break;
-          case pressed:
-            if (code == KEY_RELEASE) {
-              key_state = release;
-            }
-            break;
-          case release:
-            key_state = unpressed;
-            break;
-        }
-        // putc(hexchar((data & 0xf0) >> 4));
-        // putc(hexchar((data & 0x0f) >> 0));
-        // putc(' ');
-    }
-}
+// void USART2_IRQHandler(void)
+// {
+//     uint8_t code;
+//     gpio_bit_reset(GPIOA, GPIO_PIN_1);
+//     if(RESET != usart_interrupt_flag_get(USART2, USART_INT_FLAG_RBNE)){
+//         /* receive data */
+//         code = usart_data_receive(USART2);
+//         usart_interrupt_disable(USART2, USART_INT_RBNE);
+//         usart_interrupt_enable(USART2, USART_INT_RBNE);
+//         return;
+//         // switch (key_state) {
+//         //   case unpressed:
+//         //     key_state = pressed;
+//         //     switch (code) {
+//         //       case KEY_ENTER:
+//         //         cursor_y++;
+//         //         cursor_x = 1;
+//         //         if (cursor_y >= 240/8-1) {
+//         //           cursor_y = 1;
+//         //         }
+//         //         break;
+//         //       case KEY_BKSP:
+//         //         cursor_x--;
+//         //         if (cursor_x < 1) {
+//         //           cursor_x = 1;
+//         //         }
+//         //         break;
+//         //       default:
+//         //         putc(key2char(code));
+//         //     }
+//         //     break;
+//         //   case pressed:
+//         //     if (code == KEY_RELEASE) {
+//         //       key_state = release;
+//         //     }
+//         //     break;
+//         //   case release:
+//         //     key_state = unpressed;
+//         //     break;
+//         // }
+//         // putc(hexchar((data & 0xf0) >> 4));
+//         // putc(hexchar((data & 0x0f) >> 0));
+//         // putc(' ');
+//     }
+// }
