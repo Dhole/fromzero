@@ -93,7 +93,22 @@ char key2char(uint8_t key, bool shift)
 void key_handler(uint16_t code)
 {
     if (code & KEY_TYPE_RELEASE) {
+    } else if (code & KEY_TYPE_MOVE) {
+        switch (code & KEY_MASK) {
+            case KEY_NP8: // UP
+                putc(1 * 16 + 8);
+                break;
+            case KEY_NP2: // DOWN
+                putc(1 * 16 + 9);
+                break;
+            case KEY_NP4: // LEFT
+                putc(1 * 16 + 11);
+                break;
+            case KEY_NP6: // RIGHT
+                putc(1 * 16 + 10);
+                break;
 
+        }
     } else {
         if (code & (KEY_MOD_CTL | KEY_MOD_ALT)) {
 
@@ -429,18 +444,18 @@ int main(void)
     // }
 
 
-    // text[4][4 + 0] = 'H';
-    // text[4][4 + 1] = 'e';
-    // text[4][4 + 2] = 'l';
-    // text[4][4 + 3] = 'l';
-    // text[4][4 + 4] = 'o';
-    // text[4][4 + 5] = ' ';
-    // text[4][4 + 6] = 'w';
-    // text[4][4 + 7] = 'o';
-    // text[4][4 + 8] = 'r';
-    // text[4][4 + 9] = 'l';
-    // text[4][4 +10] = 'd';
-    // text[4][4 +11] = '!';
+    text[4][4 + 0] = 'H';
+    text[4][4 + 1] = 'e';
+    text[4][4 + 2] = 'l';
+    text[4][4 + 3] = 'l';
+    text[4][4 + 4] = 'o';
+    text[4][4 + 5] = ' ';
+    text[4][4 + 6] = 'w';
+    text[4][4 + 7] = 'o';
+    text[4][4 + 8] = 'r';
+    text[4][4 + 9] = 'l';
+    text[4][4 +10] = 'd';
+    text[4][4 +11] = '!';
     // char c = 0;
     // volatile int j = 0;
     uint16_t key;

@@ -9,7 +9,7 @@
 #include "font.h"
 
 uint8_t volatile lines[2][TEXT_W];
-uint32_t volatile cur_line_offset = 0;
+uint32_t cur_line_offset = 0;
 // uint8_t volatile *cur_line = lines[0];
 char volatile text[TEXT_H][TEXT_W];
 // uint8_t next_line_index = 0;
@@ -56,6 +56,7 @@ void TIMER1_IRQHandler(void)
 
     // cur_line = lines[(line & 0x02) >> 1];
     // cur_line = lines[0] + cur_line_offset;
+    cur_line_offset = TEXT_W * ((line / 2) & 0x1);
     DMA_CHMADDR(DMA0, DMA_CH2) = (uint32_t) (lines[0] + cur_line_offset);
 
     while (timer_counter_read(TIMER1) < H_FRONT_PORCH * PIXEL_FREQ_MUL - 3);
@@ -91,7 +92,7 @@ void TIMER1_IRQHandler(void)
             // } else {
             //     cur_line_offset = 0;
             // }
-            //
+
             // cur_line_offset = TEXT_W * (y % 2);
         }
     }
@@ -102,12 +103,12 @@ void TIMER1_IRQHandler(void)
     //         cur_line_offset = 0;
     //     }
     // }
-    uint32_t line_4 = (line & 0x3);
-    if (line_4 == 0x03) {
-        cur_line_offset = 0;
-    } else if (line_4 == 0x01) {
-        cur_line_offset = TEXT_W;
-    }
+    // uint32_t line_4 = (line & 0x3);
+    // if (line_4 == 0x03) {
+    //     cur_line_offset = 0;
+    // } else if (line_4 == 0x01) {
+    //     cur_line_offset = TEXT_W;
+    // }
 
     line++;
     if (line == V_FRAME) {
@@ -135,11 +136,14 @@ void TIMER1_IRQHandler(void)
                     break;
                 }
             }
+            if (key_type_next & KEY_TYPE_MOVE) {
+                key_type_next &= ~KEY_TYPE_MOVE;
+            }
 
             switch (code) {
-            // case MOD_MOVE:
-            //     key_type |= KEY_TYPE_MOVE;
-            //     break;
+            case MOD_MOVE:
+                key_type_next |= KEY_TYPE_MOVE;
+                break;
             case MOD_RELEASE:
                 key_type_next |= KEY_TYPE_RELEASE;
                 break;
