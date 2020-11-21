@@ -12,6 +12,7 @@ uint8_t volatile lines[2][TEXT_W];
 uint32_t cur_line_offset = 0;
 // uint8_t volatile *cur_line = lines[0];
 char volatile text[TEXT_H][TEXT_W];
+char volatile *text_line = text[0];
 // uint8_t next_line_index = 0;
 uint8_t volatile *next_line = lines[0];
 
@@ -29,16 +30,20 @@ volatile uint8_t key_buf_tail = 0;
 static uint32_t line = 0;
 static uint16_t key_type_next = 0;
 static uint16_t key_mod = 0;
+static int y;
+
+static int i_from = 0; //, i_to = 0;
 
 void TIMER1_IRQHandler(void)
 {
     uint16_t code;
-    int y;
+    int i;
+    int ydiv8, ymod8;
     // No need for if, because we only have a single TIMER1 interrupt enabled
     // if ((TIMER_INTF(TIMER1) & TIMER_INT_FLAG_UP)) {
     //
-    TIMER_INTF(TIMER1) = (~(uint32_t)TIMER_INT_FLAG_UP);
     // Horizontal state: H_FRONT_PORCH
+    //
 
     /*if (line < V_ACTIVE_VIDEO) {
     // Vertical state: V_ACTIVE_VIDEO
@@ -48,72 +53,66 @@ void TIMER1_IRQHandler(void)
     gpio_bit_set(VSYNC_PORT, VSYNC_PIN);
     } else*/ if (line < V_ACTIVE_VIDEO + V_FRONT_PORCH + V_SYNC_PULSE) {
         // Vertical state:  V_SYNC_PULSE
+        while (TIMER_CNT(TIMER1) < 0 * PIXEL_FREQ_MUL);
         gpio_bit_reset(VSYNC_PORT, VSYNC_PIN);
     } else {
         // Vertical state:  V_BACK_PORCH
+        while (TIMER_CNT(TIMER1) < 0 * PIXEL_FREQ_MUL);
         gpio_bit_set(VSYNC_PORT, VSYNC_PIN);
     }
 
-    // cur_line = lines[(line & 0x02) >> 1];
-    // cur_line = lines[0] + cur_line_offset;
-    cur_line_offset = TEXT_W * ((line / 2) & 0x1);
-    DMA_CHMADDR(DMA0, DMA_CH2) = (uint32_t) (lines[0] + cur_line_offset);
+    DMA_CHCNT(DMA0, DMA_CH2) = (LINE_LEN & DMA_CHANNEL_CNT_MASK);
+    dma_flag_clear(DMA0, DMA_CH2, DMA_FLAG_FTF);
+    // dma_channel_disable(DMA0, DMA_CH2);
+    DMA_CHCTL(DMA0, DMA_CH2) &= ~DMA_CHXCTL_CHEN;
+    // spi_dma_enable(SPI0, SPI_DMA_TRANSMIT);
+    SPI_CTL1(SPI0) |= (uint32_t)SPI_CTL1_DMATEN;
+    ydiv8 = y >> 3; // 7 / 8
+    ymod8 = y & 0x7; // 7 % 8
 
-    while (timer_counter_read(TIMER1) < H_FRONT_PORCH * PIXEL_FREQ_MUL - 3);
+    while (TIMER_CNT(TIMER1) < H_FRONT_PORCH * PIXEL_FREQ_MUL - 0);
     // Horizontal state:  H_SYNC_PULSE
     gpio_bit_reset(HSYNC_PORT, HSYNC_PIN);
 
-    DMA_CHCNT(DMA0, DMA_CH2) = (LINE_LEN & DMA_CHANNEL_CNT_MASK);
-    dma_flag_clear(DMA0, DMA_CH2, DMA_FLAG_FTF);
-    dma_channel_disable(DMA0, DMA_CH2);
-    spi_dma_enable(SPI0, SPI_DMA_TRANSMIT);
+    if (line < V_ACTIVE_VIDEO) {
+        // In even real lines, calculate first half of next line.  In odd real
+        // lines, calcualte second half of next line.
+        for (i = i_from; i < i_from + TEXT_W/2; i++) {
+            next_line[i] = font_8x8[(int)(text[ydiv8][i]) * 8 + ymod8];
+        }
+    }
 
-    while (timer_counter_read(TIMER1) < (H_FRONT_PORCH + H_SYNC_PULSE) * PIXEL_FREQ_MUL - 3);
+    while (TIMER_CNT(TIMER1) < (H_FRONT_PORCH + H_SYNC_PULSE) * PIXEL_FREQ_MUL - 0);
     // Horizontal state:  H_BACK_PORCH
     gpio_bit_set(HSYNC_PORT, HSYNC_PIN);
 
-    while (timer_counter_read(TIMER1) <
-           (H_FRONT_PORCH + H_SYNC_PULSE + H_BACK_PORCH) * PIXEL_FREQ_MUL - 23);
+    cur_line_offset = TEXT_W * ((line >> 1) & 0x1);
+    DMA_CHMADDR(DMA0, DMA_CH2) = (uint32_t) (lines[0] + cur_line_offset);
 
-    int i;
+    while (TIMER_CNT(TIMER1) <
+           (H_FRONT_PORCH + H_SYNC_PULSE + H_BACK_PORCH) * PIXEL_FREQ_MUL - 18);
+
     // Horizontal state:  H_ACTIVE_VIDEO
     if (line < V_ACTIVE_VIDEO) {
-        // dma_channel_enable(DMA0, DMA_CH2);
         DMA_CHCTL(DMA0, DMA_CH2) |= DMA_CHXCTL_CHEN;
-        // cur_line_offset = 0;
-        if (line % 2 == 1) {
-            y = ((line + 1) / 2) % H_RES;
-            next_line = lines[y % 2];
-            for (i = 0; i < TEXT_W; i++) {
-                next_line[i] = font_8x8[(int)(text[y/8][i]) * 8 + (y % 8)];
-            }
-            // if (cur_line_offset == 0) {
-            //     cur_line_offset = TEXT_W;
-            // } else {
-            //     cur_line_offset = 0;
-            // }
-
-            // cur_line_offset = TEXT_W * (y % 2);
-        }
     }
-    // if (line & 1) {
-    //     if (cur_line_offset == 0) {
-    //         cur_line_offset = TEXT_W;
-    //     } else {
-    //         cur_line_offset = 0;
-    //     }
-    // }
-    // uint32_t line_4 = (line & 0x3);
-    // if (line_4 == 0x03) {
-    //     cur_line_offset = 0;
-    // } else if (line_4 == 0x01) {
-    //     cur_line_offset = TEXT_W;
-    // }
+    TIMER_INTF(TIMER1) = (~(uint32_t)TIMER_INT_FLAG_UP);
 
     line++;
     if (line == V_FRAME) {
         line = 0;
     }
+    if (line < V_ACTIVE_VIDEO) {
+        // Prepare line rendering variables for next line
+        if (line & 0x01) {
+            y = (line / 2) % H_RES;
+            next_line = lines[(y+1) % 2];
+            i_from = 0;
+        } else {
+            i_from = TEXT_W/2;
+        }
+    }
+
     uint16_t key_type;
     if ((line & 0x1f) == 0) {
         if (RESET != usart_flag_get(USART2, USART_FLAG_RBNE)) {
