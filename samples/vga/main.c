@@ -1,163 +1,133 @@
-/*!
-    \file  main.c
-    \brief TIMER1 oc timebase demo
-    
-    \version 2019-06-05, V1.0.0, firmware for GD32VF103
-*/
-
-/*
-    Copyright (c) 2019, GigaDevice Semiconductor Inc.
-
-    Redistribution and use in source and binary forms, with or without modification, 
-are permitted provided that the following conditions are met:
-
-    1. Redistributions of source code must retain the above copyright notice, this 
-       list of conditions and the following disclaimer.
-    2. Redistributions in binary form must reproduce the above copyright notice, 
-       this list of conditions and the following disclaimer in the documentation 
-       and/or other materials provided with the distribution.
-    3. Neither the name of the copyright holder nor the names of its contributors 
-       may be used to endorse or promote products derived from this software without 
-       specific prior written permission.
-
-    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" 
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
-IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
-INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT 
-NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR 
-PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
-WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY 
-OF SUCH DAMAGE.
-*/
-
 #include "gd32vf103.h"
-// #include <stdio.h>
-// #include "gd32vf103v_eval.h"
 #include "gd32vf103_timer.h"
 #include "gd32vf103_rcu.h"
 #include "gd32vf103_gpio.h"
 
 #include "config.h"
 #include "keyboard.h"
-
-// #define  ARRAYSIZE         10
-
-extern char text[240/8][320/8];
-extern uint8_t lines[2][320/8];
-
-extern uint32_t key_buf_len;
-extern uint8_t key_buf[16];
-extern volatile uint8_t key_buf_head;
-extern volatile uint8_t key_buf_tail;
+#include "video.h"
 
 int32_t cursor_x = 1;
 int32_t cursor_y = 1;
 
 void putc(char c)
 {
-  text[cursor_y][cursor_x] = c;
-  cursor_x++;
-  if (cursor_x >= 320/8-1) {
-    cursor_x = 1;
-    cursor_y++;
-    if (cursor_y >= 240/8-1) {
-      cursor_y = 1;
+    text[cursor_y][cursor_x] = c;
+    cursor_x++;
+    if (cursor_x >= TEXT_W-1) {
+        cursor_x = 1;
+        cursor_y++;
+        if (cursor_y >= TEXT_H-1) {
+            cursor_y = 1;
+        }
     }
-  }
 }
 
 char hexchar(uint8_t v)
 {
-  if (v < 10) {
-    return '0' + v;
-  } else {
-    return 'a' + (v - 10);
-  }
-  return '*';
+    if (v < 10) {
+        return '0' + v;
+    } else {
+        return 'a' + (v - 10);
+    }
+    return '*';
 }
 
-char key2char(uint8_t key)
+char key2char(uint8_t key, bool shift)
 {
-  switch (key) {
-    case KEY_A    : return 'a';
-    case KEY_B    : return 'b';
-    case KEY_C    : return 'c';
-    case KEY_D    : return 'd';
-    case KEY_E    : return 'e';
-    case KEY_F    : return 'f';
-    case KEY_G    : return 'g';
-    case KEY_H    : return 'h';
-    case KEY_I    : return 'i';
-    case KEY_J    : return 'j';
-    case KEY_K    : return 'k';
-    case KEY_L    : return 'l';
-    case KEY_M    : return 'm';
-    case KEY_N    : return 'n';
-    case KEY_O    : return 'o';
-    case KEY_P    : return 'p';
-    case KEY_Q    : return 'q';
-    case KEY_R    : return 'r';
-    case KEY_S    : return 's';
-    case KEY_T    : return 't';
-    case KEY_U    : return 'u';
-    case KEY_V    : return 'v';
-    case KEY_W    : return 'w';
-    case KEY_X    : return 'x';
-    case KEY_Y    : return 'y';
-    case KEY_Z    : return 'z';
-    case KEY_SPACE: return ' ';
-    default: return '?';
-  }
+    switch (key) {
+        case KEY_A      : return shift ? 'A' : 'a';
+        case KEY_B      : return shift ? 'B' : 'b';
+        case KEY_C      : return shift ? 'C' : 'c';
+        case KEY_D      : return shift ? 'D' : 'd';
+        case KEY_E      : return shift ? 'E' : 'e';
+        case KEY_F      : return shift ? 'F' : 'f';
+        case KEY_G      : return shift ? 'G' : 'g';
+        case KEY_H      : return shift ? 'H' : 'h';
+        case KEY_I      : return shift ? 'I' : 'i';
+        case KEY_J      : return shift ? 'J' : 'j';
+        case KEY_K      : return shift ? 'K' : 'k';
+        case KEY_L      : return shift ? 'L' : 'l';
+        case KEY_M      : return shift ? 'M' : 'm';
+        case KEY_N      : return shift ? 'N' : 'n';
+        case KEY_O      : return shift ? 'O' : 'o';
+        case KEY_P      : return shift ? 'P' : 'p';
+        case KEY_Q      : return shift ? 'Q' : 'q';
+        case KEY_R      : return shift ? 'R' : 'r';
+        case KEY_S      : return shift ? 'S' : 's';
+        case KEY_T      : return shift ? 'T' : 't';
+        case KEY_U      : return shift ? 'U' : 'u';
+        case KEY_V      : return shift ? 'V' : 'v';
+        case KEY_W      : return shift ? 'W' : 'w';
+        case KEY_X      : return shift ? 'X' : 'x';
+        case KEY_Y      : return shift ? 'Y' : 'y';
+        case KEY_Z      : return shift ? 'Z' : 'z';
+        case KEY_SPACE  : return shift ? ' ' : ' ';
+        case KEY_1      : return shift ? '!' : '1';
+        case KEY_2      : return shift ? '@' : '2';
+        case KEY_3      : return shift ? '#' : '3';
+        case KEY_4      : return shift ? '$' : '4';
+        case KEY_5      : return shift ? '%' : '5';
+        case KEY_6      : return shift ? '^' : '6';
+        case KEY_7      : return shift ? '&' : '7';
+        case KEY_8      : return shift ? '*' : '8';
+        case KEY_9      : return shift ? '(' : '9';
+        case KEY_0      : return shift ? ')' : '0';
+        case KEY_BACKTCK: return shift ? '~' : '`';
+        case KEY_MINUS  : return shift ? '_' : '-';
+        case KEY_EQUAL  : return shift ? '+' : '=';
+        case KEY_OPEN   : return shift ? '{' : '[';
+        case KEY_CLOSE  : return shift ? '}' : ']';
+        case KEY_SCOLON : return shift ? ':' : ';';
+        case KEY_QUOTE  : return shift ? '"' : '\'';
+        case KEY_BACKSL : return shift ? '|' : '\\';
+        case KEY_COMMA  : return shift ? '<' : ',';
+        case KEY_DOT    : return shift ? '>' : '.';
+        case KEY_SLASH  : return shift ? '?' : '/';
+        default: return '?';
+    }
 }
 
-enum key_mod key_state = none;
+// enum key_mod key_state = none;
 
-void key_handler(uint8_t code)
+void key_handler(uint16_t code)
 {
-  switch (key_state) {
-    case none:
-      switch (code) {
-        case KEY_ENTER:
-          cursor_y++;
-          cursor_x = 1;
-          if (cursor_y >= 240/8-1) {
-            cursor_y = 1;
-          }
-          break;
-        case KEY_BKSP:
-          cursor_x--;
-          if (cursor_x < 1) {
-            cursor_x = 1;
-          }
-          text[cursor_y][cursor_x] = ' ';
-          break;
-        case KEY_RELEASE:
-          key_state = release;
-          break;
-        default:
-          putc(key2char(code));
-      }
-      break;
-    case release:
-      key_state = none;
-      break;
-  }
+    if (code & KEY_TYPE_RELEASE) {
+
+    } else {
+        if (code & (KEY_MOD_CTL | KEY_MOD_ALT)) {
+
+        } else {
+            switch (code & KEY_MASK) {
+            case KEY_ENTER:
+                cursor_y++;
+                cursor_x = 1;
+                if (cursor_y >= TEXT_H-1) {
+                    cursor_y = 1;
+                }
+                break;
+            case KEY_BKSP:
+                cursor_x--;
+                if (cursor_x < 1) {
+                    cursor_x = 1;
+                }
+                text[cursor_y][cursor_x] = ' ';
+                break;
+            default:
+                putc(key2char((uint8_t) (code & KEY_MASK), code & KEY_MOD_SHIFT));
+                break;
+            }
+        }
+    }
 }
 
 void key_handler2(uint8_t code)
 {
-        putc(hexchar((code & 0xf0) >> 4));
-        putc(hexchar((code & 0x0f) >> 0));
-        putc(' ');
+    putc(hexchar((code & 0xf0) >> 4));
+    putc(hexchar((code & 0x0f) >> 0));
+    putc(' ');
 }
 
-
-// uint8_t spi0_send_array[ARRAYSIZE] = {0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA};
-// uint8_t spi2_send_array[ARRAYSIZE] = {0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA};
-// uint8_t spi0_receive_array[ARRAYSIZE]; 
-// uint8_t spi2_receive_array[ARRAYSIZE];
 
 void rcu_config(void)
 {
@@ -210,24 +180,6 @@ void spi_config(void)
     spi0.prescale             = SPI_PSC_8;
     spi0.endian               = SPI_ENDIAN_LSB;
     spi_init(SPI0, &spi0);
-
-    //
-    // SPI1
-    //
-    // spi_parameter_struct spi1;
-    // /* deinitilize SPI and the parameters */
-    // spi_i2s_deinit(SPI1);
-    // spi_struct_para_init(&spi1);
-
-    // /* configure SPI1 parameter */
-    // spi1.frame_size           = SPI_FRAMESIZE_8BIT;
-    // spi1.clock_polarity_phase = SPI_CK_PL_HIGH_PH_2EDGE;
-    // spi1.prescale             = SPI_PSC_8;
-    // spi1.endian               = SPI_ENDIAN_LSB;
-    // spi1.trans_mode           = SPI_TRANSMODE_BDRECEIVE;
-    // spi1.device_mode          = SPI_SLAVE;
-    // spi1.nss                  = SPI_NSS_SOFT;
-    // spi_init(SPI1, &spi1);
 }
 
 void usart_config(void)
@@ -235,7 +187,6 @@ void usart_config(void)
     /* USART configure */
     usart_deinit(USART2);
     //usart_baudrate_set(USART2, 12000U);
-    //
     uint32_t uclk = 50000000;
     uint32_t baudval = 12000;
     uint32_t usart_periph = USART2;
@@ -257,18 +208,18 @@ void usart_config(void)
 void dma_config(void)
 {
     dma_parameter_struct dma_init_struct;
-    
+
     /* SPI0 transmit dma config:DMA0-DMA_CH2 */
     dma_deinit(DMA0, DMA_CH2);
     dma_struct_para_init(&dma_init_struct);
-    
+
     dma_init_struct.periph_addr  = (uint32_t)&SPI_DATA(SPI0);
     dma_init_struct.memory_addr  = (uint32_t)lines[0];
     dma_init_struct.direction    = DMA_MEMORY_TO_PERIPHERAL;
     dma_init_struct.memory_width = DMA_MEMORY_WIDTH_8BIT;
     dma_init_struct.periph_width = DMA_PERIPHERAL_WIDTH_8BIT;
     dma_init_struct.priority     = DMA_PRIORITY_ULTRA_HIGH;
-    dma_init_struct.number       = 320/8;
+    dma_init_struct.number       = TEXT_W;
     dma_init_struct.periph_inc   = DMA_PERIPH_INCREASE_DISABLE;
     dma_init_struct.memory_inc   = DMA_MEMORY_INCREASE_ENABLE;
     dma_init(DMA0, DMA_CH2, &dma_init_struct);
@@ -437,18 +388,11 @@ system_init(void)
 */
 int main(void)
 {
-    // FlagStatus current;
-    // gd_eval_led_init(LED2);
-
-    //////
-    // SystemInit();
     system_init();
 
     //ECLIC init
     eclic_init(ECLIC_NUM_INTERRUPTS);
     eclic_mode_enable();
-
-    //////
 
     rcu_config();
     gpio_config();
@@ -471,7 +415,6 @@ int main(void)
     spi_i2s_interrupt_enable(SPI1, SPI_I2S_INT_RBNE);
 
     spi_enable(SPI0);
-    // spi_enable(SPI1);
 
     // int i;
     // for (i = 0; i < 320/8; i++) {
@@ -500,12 +443,12 @@ int main(void)
     // text[4][4 +11] = '!';
     // char c = 0;
     // volatile int j = 0;
-    uint8_t key;
+    uint16_t key;
     while (1) {
         if (key_buf_tail != key_buf_head) {
             // gpio_bit_reset(GPIOA, GPIO_PIN_1);
             key = key_buf[key_buf_tail];
-            key_buf_tail = (key_buf_tail + 1) % key_buf_len;
+            key_buf_tail = (key_buf_tail + 1) % KEY_BUF_LEN;
             key_handler(key);
         }
         // for (j = 0; j < 0xffffff/50; j++) {
@@ -521,18 +464,3 @@ int main(void)
         // delay_1ms(1000);
     }
 }
-
-// void *memcpy(void *restrict dest, const void *restrict src, size_t n)
-// {
-// 	if (n > 0) {
-// 		char *cdest = dest;
-// 		const char *csrc = src;
-// 		const char *cend = csrc + n;
-// 
-// 		do {
-// 			*cdest++ = *csrc++;
-// 		} while (csrc < cend);
-// 	}
-// 
-// 	return dest;
-// }
