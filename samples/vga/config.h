@@ -3,8 +3,8 @@
 
 #include "gd32vf103_gpio.h"
 
-#define HSYNC_PORT GPIOA
-#define HSYNC_PIN GPIO_PIN_0
+#define HSYNC_PORT GPIOB
+#define HSYNC_PIN GPIO_PIN_5
 #define VSYNC_PORT GPIOA
 #define VSYNC_PIN GPIO_PIN_3
 
@@ -47,7 +47,7 @@
 
 #define CK_SYS 100000000
 #define PIXEL_FREQ_MUL (CK_SYS / PIXEL_FREQ)
-#define V_RES (V_ACTIVE_VIDEO/2)
-#define H_RES (H_ACTIVE_VIDEO/2)
+#define V_RES (V_ACTIVE_VIDEO/2/2)
+#define H_RES (H_ACTIVE_VIDEO/2/2)
 
 #endif /* CONFIG_H */

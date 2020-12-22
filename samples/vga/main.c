@@ -7,18 +7,20 @@
 #include "keyboard.h"
 #include "video.h"
 
-int32_t cursor_x = 1;
-int32_t cursor_y = 1;
+const int32_t pad = 0;
+
+int32_t cursor_x = pad;
+int32_t cursor_y = pad;
 
 void putc(char c)
 {
     text[cursor_y][cursor_x] = c;
     cursor_x++;
-    if (cursor_x >= TEXT_W-1) {
-        cursor_x = 1;
+    if (cursor_x >= TEXT_W-pad) {
+        cursor_x = pad;
         cursor_y++;
-        if (cursor_y >= TEXT_H-1) {
-            cursor_y = 1;
+        if (cursor_y >= TEXT_H-pad) {
+            cursor_y = pad;
         }
     }
 }
@@ -116,15 +118,15 @@ void key_handler(uint16_t code)
             switch (code & KEY_MASK) {
             case KEY_ENTER:
                 cursor_y++;
-                cursor_x = 1;
-                if (cursor_y >= TEXT_H-1) {
-                    cursor_y = 1;
+                cursor_x = pad;
+                if (cursor_y >= TEXT_H-pad) {
+                    cursor_y = pad;
                 }
                 break;
             case KEY_BKSP:
                 cursor_x--;
-                if (cursor_x < 1) {
-                    cursor_x = 1;
+                if (cursor_x < pad) {
+                    cursor_x = pad;
                 }
                 text[cursor_y][cursor_x] = ' ';
                 break;
@@ -160,12 +162,13 @@ void gpio_config(void)
 {
     gpio_bit_reset(HSYNC_PORT, HSYNC_PIN);
     gpio_bit_reset(VSYNC_PORT, HSYNC_PIN);
-    gpio_init(HSYNC_PORT, GPIO_MODE_OUT_PP, GPIO_OSPEED_50MHZ, HSYNC_PIN | VSYNC_PIN);
+    gpio_init(HSYNC_PORT, GPIO_MODE_OUT_PP, GPIO_OSPEED_50MHZ, HSYNC_PIN);
+    gpio_init(VSYNC_PORT, GPIO_MODE_OUT_PP, GPIO_OSPEED_50MHZ, VSYNC_PIN);
 
     // SPI0 is used for generating the green signal of VGA as master output (master mode)
     /* SPI0 GPIO config:SCK/PA5, MISO/PA6, MOSI/PA7 */
-    gpio_init(GPIOA, GPIO_MODE_AF_PP, GPIO_OSPEED_50MHZ, GPIO_PIN_5 | GPIO_PIN_7);
-    gpio_init(GPIOA, GPIO_MODE_IN_FLOATING, GPIO_OSPEED_50MHZ, GPIO_PIN_6);
+    gpio_init(GREEN_PORT, GPIO_MODE_AF_PP, GPIO_OSPEED_50MHZ, GREEN_PIN);
+    // gpio_init(GPIOA, GPIO_MODE_IN_FLOATING, GPIO_OSPEED_50MHZ, GPIO_PIN_6);
 
     // SPI1 is used to receive PS/2 data as master input (slave mode)
     /* SPI1 GPIO config:SCK/PB13, MISO/PB14, MOSI/PB15 */
@@ -192,7 +195,7 @@ void spi_config(void)
     spi0.frame_size           = SPI_FRAMESIZE_8BIT;
     spi0.clock_polarity_phase = SPI_CK_PL_HIGH_PH_2EDGE;
     spi0.nss                  = SPI_NSS_SOFT;
-    spi0.prescale             = SPI_PSC_8;
+    spi0.prescale             = SPI_PSC_16;
     spi0.endian               = SPI_ENDIAN_LSB;
     spi_init(SPI0, &spi0);
 }
@@ -432,16 +435,16 @@ int main(void)
     spi_enable(SPI0);
 
     int i;
-    // for (i = 0; i < 320/8; i++) {
-    //     text[0][i] = 11 * 16 + 1;
-    //     text[240/8-1][i] = 11 * 16 + 1;
-    // }
-    // for (i = 0; i < 240/8; i++) {
-    //     // text[i][0] = 11 * 16 + 1;
-    //     // text[i][320/8-1] = 11 * 16 + 1;
-    //     text[i][0] = 11 * 16 + 1;
-    //     // text[i][320/8-2] = 11 * 16 + 1;
-    // }
+    for (i = 0; i < TEXT_W; i++) {
+        text[0][i] = 11 * 16 + 1;
+        text[TEXT_H-1][i] = 11 * 16 + 1;
+    }
+    for (i = 0; i < TEXT_H; i++) {
+        // text[i][0] = 11 * 16 + 1;
+        // text[i][320/8-1] = 11 * 16 + 1;
+        text[i][0] = 11 * 16 + 1;
+        text[i][TEXT_W-1] = 11 * 16 + 1;
+    }
 
 
     text[4][4 + 0] = 'H';
@@ -450,12 +453,12 @@ int main(void)
     text[4][4 + 3] = 'l';
     text[4][4 + 4] = 'o';
     text[4][4 + 5] = ' ';
-    text[4][4 + 6] = 'w';
-    text[4][4 + 7] = 'o';
-    text[4][4 + 8] = 'r';
-    text[4][4 + 9] = 'l';
-    text[4][4 +10] = 'd';
-    text[4][4 +11] = '!';
+    // text[4][4 + 6] = 'w';
+    // text[4][4 + 7] = 'o';
+    // text[4][4 + 8] = 'r';
+    // text[4][4 + 9] = 'l';
+    // text[4][4 +10] = 'd';
+    // text[4][4 +11] = '!';
     // char c = 0;
     // volatile int j = 0;
     uint16_t key;

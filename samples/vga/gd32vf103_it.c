@@ -51,13 +51,13 @@ void TIMER1_IRQHandler(void)
     } else if (line < V_ACTIVE_VIDEO + V_FRONT_PORCH) {
     // Vertical state:  V_FRONT_PORCH
     gpio_bit_set(VSYNC_PORT, VSYNC_PIN);
-    } else*/ if (line < V_ACTIVE_VIDEO + V_FRONT_PORCH + V_SYNC_PULSE) {
+    } else*/ if (line == V_ACTIVE_VIDEO + V_FRONT_PORCH) {
         // Vertical state:  V_SYNC_PULSE
-        while (TIMER_CNT(TIMER1) < 0 * PIXEL_FREQ_MUL);
+        // while (TIMER_CNT(TIMER1) < 0 * PIXEL_FREQ_MUL);
         gpio_bit_reset(VSYNC_PORT, VSYNC_PIN);
-    } else {
+    } else if (line == V_ACTIVE_VIDEO + V_FRONT_PORCH + V_SYNC_PULSE) {
         // Vertical state:  V_BACK_PORCH
-        while (TIMER_CNT(TIMER1) < 0 * PIXEL_FREQ_MUL);
+        // while (TIMER_CNT(TIMER1) < 0 * PIXEL_FREQ_MUL);
         gpio_bit_set(VSYNC_PORT, VSYNC_PIN);
     }
 
@@ -86,7 +86,7 @@ void TIMER1_IRQHandler(void)
     // Horizontal state:  H_BACK_PORCH
     gpio_bit_set(HSYNC_PORT, HSYNC_PIN);
 
-    cur_line_offset = TEXT_W * ((line >> 1) & 0x1);
+    cur_line_offset = TEXT_W * ((line >> 2) & 0x1);
     DMA_CHMADDR(DMA0, DMA_CH2) = (uint32_t) (lines[0] + cur_line_offset);
 
     while (TIMER_CNT(TIMER1) <
@@ -104,8 +104,8 @@ void TIMER1_IRQHandler(void)
     }
     if (line < V_ACTIVE_VIDEO) {
         // Prepare line rendering variables for next line
-        if (line & 0x01) {
-            y = (line / 2) % H_RES;
+        if (line & 0x03) {
+            y = (line / 4) % H_RES;
             next_line = lines[(y+1) % 2];
             i_from = 0;
         } else {
