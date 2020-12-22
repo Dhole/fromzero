@@ -9,11 +9,12 @@
 #include "font.h"
 
 uint8_t volatile lines[2][SYNC + LINE_LEN];
-uint32_t cur_line_offset = 0;
+// uint32_t cur_line_offset = 0;
 // uint8_t volatile *cur_line = lines[0];
 char volatile text[TEXT_H][TEXT_W];
-char volatile *text_line = text[0];
+// char volatile *text_line = text[0];
 // uint8_t next_line_index = 0;
+uint8_t volatile *cur_line = lines[0];
 uint8_t volatile *next_line = lines[0];
 
 enum sync_state {
@@ -75,7 +76,7 @@ void TIMER1_IRQHandler(void)
     // spi_dma_enable(SPI2, SPI_DMA_TRANSMIT);
     SPI_CTL1(SPI2) |= (uint32_t)SPI_CTL1_DMATEN;
 
-    DMA_CHMADDR(DMA0, DMA_CH2) = (uint32_t) (lines[0] + cur_line_offset);
+    DMA_CHMADDR(DMA0, DMA_CH2) = (uint32_t) (cur_line);
     DMA_CHMADDR(DMA1, DMA_CH1) = (uint32_t) (h_sync);
 
     // Horizontal state:  H_ACTIVE_VIDEO
@@ -85,18 +86,24 @@ void TIMER1_IRQHandler(void)
     DMA_CHCTL(DMA1, DMA_CH1) |= DMA_CHXCTL_CHEN;
     TIMER_INTF(TIMER1) = (~(uint32_t)TIMER_INT_FLAG_UP);
 
-    ydiv8 = y >> 3; // 7 / 8
-    ymod8 = y & 0x7; // 7 % 8
 
     // while (TIMER_CNT(TIMER1) < H_FRONT_PORCH * PIXEL_FREQ_MUL - 0);
     // // Horizontal state:  H_SYNC_PULSE
     // gpio_bit_reset(HSYNC_PORT, HSYNC_PIN);
+    //
+    line++;
+    if (line == V_FRAME) {
+        line = 0;
+    }
 
-    if (line < V_ACTIVE_VIDEO) {
-        // In even real lines, calculate first half of next line.  In odd real
-        // lines, calcualte second half of next line.
-        for (i = i_from; i < i_from + TEXT_W/2; i++) {
-            next_line[SYNC + i] = font_8x8[(int)(text[ydiv8][i]) * 8 + ymod8];
+    if (line < V_ACTIVE_VIDEO && (line & 0x3)) {
+        y = (line / 4);
+        cur_line = lines[y % 2];
+        next_line = lines[(y+1) % 2];
+        ydiv8 = y >> 3; // 7 / 8
+        ymod8 = y & 0x7; // 7 % 8
+        for (i = 0; i < TEXT_W; i++) {
+            cur_line[SYNC + i] = font_8x8[(int)(text[ydiv8][i]) * 8 + ymod8];
         }
     }
 
@@ -104,25 +111,20 @@ void TIMER1_IRQHandler(void)
     // Horizontal state:  H_BACK_PORCH
     // gpio_bit_set(HSYNC_PORT, HSYNC_PIN);
 
-    cur_line_offset = (SYNC + LINE_LEN) * ((line >> 2) & 0x1);
 
     // while (TIMER_CNT(TIMER1) <
     //        (H_FRONT_PORCH + H_SYNC_PULSE + H_BACK_PORCH) * PIXEL_FREQ_MUL - 18);
 
-    line++;
-    if (line == V_FRAME) {
-        line = 0;
-    }
-    if (line < V_ACTIVE_VIDEO) {
-        // Prepare line rendering variables for next line
-        if (line & 0x03) {
-            y = (line / 4) % H_RES;
-            next_line = lines[(y+1) % 2];
-            i_from = 0;
-        } else {
-            i_from = TEXT_W/2;
-        }
-    }
+    // if (line < V_ACTIVE_VIDEO) {
+    //     // Prepare line rendering variables for next line
+    //     if (line & 0x03) {
+    //         y = (line / 4) % H_RES;
+    //         next_line = lines[(y+1) % 2];
+    //         // i_from = 0;
+    //     } else {
+    //         // i_from = TEXT_W/2;
+    //     }
+    // }
 
     uint16_t key_type;
     if ((line & 0x1f) == 0) {
