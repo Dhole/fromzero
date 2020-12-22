@@ -8,7 +8,7 @@
 #include "keyboard.h"
 #include "font.h"
 
-uint8_t volatile lines[2][TEXT_W];
+uint8_t volatile lines[2][SYNC + LINE_LEN];
 uint32_t cur_line_offset = 0;
 // uint8_t volatile *cur_line = lines[0];
 char volatile text[TEXT_H][TEXT_W];
@@ -61,42 +61,53 @@ void TIMER1_IRQHandler(void)
         gpio_bit_set(VSYNC_PORT, VSYNC_PIN);
     }
 
-    DMA_CHCNT(DMA0, DMA_CH2) = (LINE_LEN & DMA_CHANNEL_CNT_MASK);
-    dma_flag_clear(DMA0, DMA_CH2, DMA_FLAG_FTF);
     // dma_channel_disable(DMA0, DMA_CH2);
     DMA_CHCTL(DMA0, DMA_CH2) &= ~DMA_CHXCTL_CHEN;
+    // DMA_CHCNT(DMA0, DMA_CH2) = (LINE_LEN & DMA_CHANNEL_CNT_MASK);
+    // dma_flag_clear(DMA0, DMA_CH2, DMA_FLAG_FTF);
     // spi_dma_enable(SPI0, SPI_DMA_TRANSMIT);
     SPI_CTL1(SPI0) |= (uint32_t)SPI_CTL1_DMATEN;
-    ydiv8 = y >> 3; // 7 / 8
-    ymod8 = y & 0x7; // 7 % 8
 
-    while (TIMER_CNT(TIMER1) < H_FRONT_PORCH * PIXEL_FREQ_MUL - 0);
-    // Horizontal state:  H_SYNC_PULSE
-    gpio_bit_reset(HSYNC_PORT, HSYNC_PIN);
+    // dma_channel_disable(DMA1, DMA_CH1);
+    DMA_CHCTL(DMA1, DMA_CH1) &= ~DMA_CHXCTL_CHEN;
+    // DMA_CHCNT(DMA1, DMA_CH1) = (TEXT_W & DMA_CHANNEL_CNT_MASK);
+    // dma_flag_clear(DMA1, DMA_CH1, DMA_FLAG_FTF);
+    // spi_dma_enable(SPI2, SPI_DMA_TRANSMIT);
+    SPI_CTL1(SPI2) |= (uint32_t)SPI_CTL1_DMATEN;
 
-    if (line < V_ACTIVE_VIDEO) {
-        // In even real lines, calculate first half of next line.  In odd real
-        // lines, calcualte second half of next line.
-        for (i = i_from; i < i_from + TEXT_W/2; i++) {
-            next_line[i] = font_8x8[(int)(text[ydiv8][i]) * 8 + ymod8];
-        }
-    }
-
-    while (TIMER_CNT(TIMER1) < (H_FRONT_PORCH + H_SYNC_PULSE) * PIXEL_FREQ_MUL - 0);
-    // Horizontal state:  H_BACK_PORCH
-    gpio_bit_set(HSYNC_PORT, HSYNC_PIN);
-
-    cur_line_offset = TEXT_W * ((line >> 2) & 0x1);
     DMA_CHMADDR(DMA0, DMA_CH2) = (uint32_t) (lines[0] + cur_line_offset);
-
-    while (TIMER_CNT(TIMER1) <
-           (H_FRONT_PORCH + H_SYNC_PULSE + H_BACK_PORCH) * PIXEL_FREQ_MUL - 18);
+    DMA_CHMADDR(DMA1, DMA_CH1) = (uint32_t) (h_sync);
 
     // Horizontal state:  H_ACTIVE_VIDEO
     if (line < V_ACTIVE_VIDEO) {
         DMA_CHCTL(DMA0, DMA_CH2) |= DMA_CHXCTL_CHEN;
     }
+    DMA_CHCTL(DMA1, DMA_CH1) |= DMA_CHXCTL_CHEN;
     TIMER_INTF(TIMER1) = (~(uint32_t)TIMER_INT_FLAG_UP);
+
+    ydiv8 = y >> 3; // 7 / 8
+    ymod8 = y & 0x7; // 7 % 8
+
+    // while (TIMER_CNT(TIMER1) < H_FRONT_PORCH * PIXEL_FREQ_MUL - 0);
+    // // Horizontal state:  H_SYNC_PULSE
+    // gpio_bit_reset(HSYNC_PORT, HSYNC_PIN);
+
+    if (line < V_ACTIVE_VIDEO) {
+        // In even real lines, calculate first half of next line.  In odd real
+        // lines, calcualte second half of next line.
+        for (i = i_from; i < i_from + TEXT_W/2; i++) {
+            next_line[SYNC + i] = font_8x8[(int)(text[ydiv8][i]) * 8 + ymod8];
+        }
+    }
+
+    // while (TIMER_CNT(TIMER1) < (H_FRONT_PORCH + H_SYNC_PULSE) * PIXEL_FREQ_MUL - 0);
+    // Horizontal state:  H_BACK_PORCH
+    // gpio_bit_set(HSYNC_PORT, HSYNC_PIN);
+
+    cur_line_offset = (SYNC + LINE_LEN) * ((line >> 2) & 0x1);
+
+    // while (TIMER_CNT(TIMER1) <
+    //        (H_FRONT_PORCH + H_SYNC_PULSE + H_BACK_PORCH) * PIXEL_FREQ_MUL - 18);
 
     line++;
     if (line == V_FRAME) {

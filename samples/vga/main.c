@@ -8,6 +8,7 @@
 #include "video.h"
 
 const int32_t pad = 0;
+volatile uint8_t h_sync[TEXT_W];
 
 int32_t cursor_x = pad;
 int32_t cursor_y = pad;
@@ -153,7 +154,9 @@ void rcu_config(void)
     rcu_periph_clock_enable(RCU_GPIOC);
     rcu_periph_clock_enable(RCU_AF);
     rcu_periph_clock_enable(RCU_DMA0);
+    rcu_periph_clock_enable(RCU_DMA1);
     rcu_periph_clock_enable(RCU_SPI0);
+    rcu_periph_clock_enable(RCU_SPI2);
     rcu_periph_clock_enable(RCU_USART2);
     // rcu_periph_clock_enable(RCU_SPI1);
 }
@@ -162,13 +165,15 @@ void gpio_config(void)
 {
     gpio_bit_reset(HSYNC_PORT, HSYNC_PIN);
     gpio_bit_reset(VSYNC_PORT, HSYNC_PIN);
-    gpio_init(HSYNC_PORT, GPIO_MODE_OUT_PP, GPIO_OSPEED_50MHZ, HSYNC_PIN);
+    // gpio_init(HSYNC_PORT, GPIO_MODE_OUT_PP, GPIO_OSPEED_50MHZ, HSYNC_PIN);
     gpio_init(VSYNC_PORT, GPIO_MODE_OUT_PP, GPIO_OSPEED_50MHZ, VSYNC_PIN);
 
     // SPI0 is used for generating the green signal of VGA as master output (master mode)
     /* SPI0 GPIO config:SCK/PA5, MISO/PA6, MOSI/PA7 */
     gpio_init(GREEN_PORT, GPIO_MODE_AF_PP, GPIO_OSPEED_50MHZ, GREEN_PIN);
-    // gpio_init(GPIOA, GPIO_MODE_IN_FLOATING, GPIO_OSPEED_50MHZ, GPIO_PIN_6);
+    // SPI is used for generating the H_SYNC signal of VGA as master output (master mode)
+    /* SPI2 GPIO config: MISO/PB5 */
+    gpio_init(HSYNC_PORT, GPIO_MODE_AF_PP, GPIO_OSPEED_50MHZ, HSYNC_PIN);
 
     // SPI1 is used to receive PS/2 data as master input (slave mode)
     /* SPI1 GPIO config:SCK/PB13, MISO/PB14, MOSI/PB15 */
@@ -193,11 +198,29 @@ void spi_config(void)
     spi0.trans_mode           = SPI_TRANSMODE_BDTRANSMIT;
     spi0.device_mode          = SPI_MASTER;
     spi0.frame_size           = SPI_FRAMESIZE_8BIT;
-    spi0.clock_polarity_phase = SPI_CK_PL_HIGH_PH_2EDGE;
+    spi0.clock_polarity_phase = SPI_CK_PL_LOW_PH_2EDGE;
     spi0.nss                  = SPI_NSS_SOFT;
     spi0.prescale             = SPI_PSC_16;
     spi0.endian               = SPI_ENDIAN_LSB;
     spi_init(SPI0, &spi0);
+
+    //
+    // SPI2
+    //
+    spi_parameter_struct spi2;
+    /* deinitilize SPI and the parameters */
+    spi_i2s_deinit(SPI2);
+    spi_struct_para_init(&spi2);
+
+    /* SPI2 parameter config */
+    spi2.trans_mode           = SPI_TRANSMODE_BDTRANSMIT;
+    spi2.device_mode          = SPI_MASTER;
+    spi2.frame_size           = SPI_FRAMESIZE_8BIT;
+    spi2.clock_polarity_phase = SPI_CK_PL_LOW_PH_2EDGE;
+    spi2.nss                  = SPI_NSS_SOFT;
+    spi2.prescale             = SPI_PSC_8;
+    spi2.endian               = SPI_ENDIAN_LSB;
+    spi_init(SPI2, &spi2);
 }
 
 void usart_config(void)
@@ -237,13 +260,31 @@ void dma_config(void)
     dma_init_struct.memory_width = DMA_MEMORY_WIDTH_8BIT;
     dma_init_struct.periph_width = DMA_PERIPHERAL_WIDTH_8BIT;
     dma_init_struct.priority     = DMA_PRIORITY_ULTRA_HIGH;
-    dma_init_struct.number       = TEXT_W;
+    dma_init_struct.number       = SYNC + LINE_LEN;
     dma_init_struct.periph_inc   = DMA_PERIPH_INCREASE_DISABLE;
     dma_init_struct.memory_inc   = DMA_MEMORY_INCREASE_ENABLE;
     dma_init(DMA0, DMA_CH2, &dma_init_struct);
     /* configure DMA mode */
     dma_circulation_disable(DMA0, DMA_CH2);
     dma_memory_to_memory_disable(DMA0, DMA_CH2);
+
+    /* SPI2 transmit dma config:DMA1-DMA_CH1 */
+    dma_deinit(DMA1, DMA_CH1);
+    dma_struct_para_init(&dma_init_struct);
+
+    dma_init_struct.periph_addr  = (uint32_t)&SPI_DATA(SPI2);
+    dma_init_struct.memory_addr  = (uint32_t)h_sync;
+    dma_init_struct.direction    = DMA_MEMORY_TO_PERIPHERAL;
+    dma_init_struct.memory_width = DMA_MEMORY_WIDTH_8BIT;
+    dma_init_struct.periph_width = DMA_PERIPHERAL_WIDTH_8BIT;
+    dma_init_struct.priority     = DMA_PRIORITY_ULTRA_HIGH;
+    dma_init_struct.number       = TEXT_W;
+    dma_init_struct.periph_inc   = DMA_PERIPH_INCREASE_DISABLE;
+    dma_init_struct.memory_inc   = DMA_MEMORY_INCREASE_ENABLE;
+    dma_init(DMA1, DMA_CH1, &dma_init_struct);
+    /* configure DMA mode */
+    dma_circulation_disable(DMA1, DMA_CH1);
+    dma_memory_to_memory_disable(DMA1, DMA_CH1);
 }
 
 /**
@@ -406,6 +447,11 @@ system_init(void)
 */
 int main(void)
 {
+    // lines[0][TEXT_W] = 0xf0;
+    // lines[1][TEXT_W] = 0xf0;
+    // lines[0][TEXT_W+1] = 0xc0;
+    // lines[1][TEXT_W+1] = 0xc0;
+
     system_init();
 
     //ECLIC init
@@ -430,29 +476,46 @@ int main(void)
     timer_config();
     // usart_interrupt_disable(USART2, USART_INT_RBNE);
     // usart_interrupt_enable(USART2, USART_INT_RBNE);
-    spi_i2s_interrupt_enable(SPI1, SPI_I2S_INT_RBNE);
+    // spi_i2s_interrupt_enable(SPI1, SPI_I2S_INT_RBNE);
 
     spi_enable(SPI0);
+    spi_enable(SPI2);
 
     int i;
-    for (i = 0; i < TEXT_W; i++) {
-        text[0][i] = 11 * 16 + 1;
-        text[TEXT_H-1][i] = 11 * 16 + 1;
-    }
+    int j;
     for (i = 0; i < TEXT_H; i++) {
-        // text[i][0] = 11 * 16 + 1;
-        // text[i][320/8-1] = 11 * 16 + 1;
-        text[i][0] = 11 * 16 + 1;
-        text[i][TEXT_W-1] = 11 * 16 + 1;
+        for (j = 0; j < TEXT_W; j++) {
+            text[i][j] = 11 * 16 + 1;
+        }
     }
+    int b;
+    for (i = 0; i < TEXT_W * 8; i++) {
+        if ((H_FRONT_PORCH/2/2) <= i && i < ((H_FRONT_PORCH + H_SYNC_PULSE)/2/2)) {
+            b = 0;
+        } else {
+            b = 1;
+        }
+        h_sync[i / 8] |= b << (i % 8);
+    }
+    // h_sync[0] = 0x01;
+    // for (i = 0; i < TEXT_W; i++) {
+    //     text[0][i] = 11 * 16 + 1;
+    //     text[TEXT_H-1][i] = 11 * 16 + 1;
+    // }
+    // for (i = 0; i < TEXT_H; i++) {
+    //     // text[i][0] = 11 * 16 + 1;
+    //     // text[i][320/8-1] = 11 * 16 + 1;
+    //     text[i][0] = 11 * 16 + 1;
+    //     text[i][TEXT_W-1] = 11 * 16 + 1;
+    // }
 
 
-    text[4][4 + 0] = 'H';
-    text[4][4 + 1] = 'e';
-    text[4][4 + 2] = 'l';
-    text[4][4 + 3] = 'l';
-    text[4][4 + 4] = 'o';
-    text[4][4 + 5] = ' ';
+    // text[4][4 + 0] = 'H';
+    // text[4][4 + 1] = 'e';
+    // text[4][4 + 2] = 'l';
+    // text[4][4 + 3] = 'l';
+    // text[4][4 + 4] = 'o';
+    // text[4][4 + 5] = ' ';
     // text[4][4 + 6] = 'w';
     // text[4][4 + 7] = 'o';
     // text[4][4 + 8] = 'r';
