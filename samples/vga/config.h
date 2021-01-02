@@ -47,7 +47,9 @@
 
 #define CK_SYS 100000000
 #define PIXEL_FREQ_MUL (CK_SYS / PIXEL_FREQ)
-#define V_RES (V_ACTIVE_VIDEO/2/2)
-#define H_RES (H_ACTIVE_VIDEO/2/2)
+#define DIV 2
+#define DIV_MASK (DIV-1)
+#define V_RES (V_ACTIVE_VIDEO/DIV)
+#define H_RES (H_ACTIVE_VIDEO/DIV)
 
 #endif /* CONFIG_H */

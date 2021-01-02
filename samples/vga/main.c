@@ -200,7 +200,9 @@ void spi_config(void)
     spi0.frame_size           = SPI_FRAMESIZE_8BIT;
     spi0.clock_polarity_phase = SPI_CK_PL_LOW_PH_2EDGE;
     spi0.nss                  = SPI_NSS_SOFT;
-    spi0.prescale             = SPI_PSC_16;
+    // SPI0 Clock = APB2 / PSC = PIXEL_FREQ_MUL / DIV
+    // = 100 MHz / 8 = 25MHz / 2 = 12.5 MHz
+    spi0.prescale             = SPI_PSC_8;
     spi0.endian               = SPI_ENDIAN_LSB;
     spi_init(SPI0, &spi0);
 
@@ -218,7 +220,9 @@ void spi_config(void)
     spi2.frame_size           = SPI_FRAMESIZE_8BIT;
     spi2.clock_polarity_phase = SPI_CK_PL_LOW_PH_2EDGE;
     spi2.nss                  = SPI_NSS_SOFT;
-    spi2.prescale             = SPI_PSC_8;
+    // SPI2 Clock = APB1 / PSC = PIXEL_FREQ_MUL / DIV
+    // = 50 MHz / 4 = 25MHz / 2 = 12.5 MHz
+    spi2.prescale             = SPI_PSC_4;
     spi2.endian               = SPI_ENDIAN_LSB;
     spi_init(SPI2, &spi2);
 }
@@ -490,7 +494,7 @@ int main(void)
     }
     int b;
     for (i = 0; i < TEXT_W * 8; i++) {
-        if ((H_FRONT_PORCH/2/2) <= i && i < ((H_FRONT_PORCH + H_SYNC_PULSE)/2/2)) {
+        if ((H_FRONT_PORCH/DIV) <= i && i < ((H_FRONT_PORCH + H_SYNC_PULSE)/DIV)) {
             b = 0;
         } else {
             b = 1;

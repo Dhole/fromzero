@@ -96,12 +96,12 @@ void TIMER1_IRQHandler(void)
         line = 0;
     }
 
-    if (line < V_ACTIVE_VIDEO && (line & 0x3)) {
-        y = (line / 4);
+    if (line < V_ACTIVE_VIDEO && (line & DIV_MASK)) {
+        y = (line / DIV);
         cur_line = lines[y % 2];
         next_line = lines[(y+1) % 2];
-        ydiv8 = y >> 3; // 7 / 8
-        ymod8 = y & 0x7; // 7 % 8
+        ydiv8 = y >> 3; // y / 8
+        ymod8 = y & 0x7; // y % 8
         for (i = 0; i < TEXT_W; i++) {
             cur_line[SYNC + i] = font_8x8[(int)(text[ydiv8][i]) * 8 + ymod8];
         }
