@@ -52,4 +52,6 @@
 #define V_RES (V_ACTIVE_VIDEO/DIV)
 #define H_RES (H_ACTIVE_VIDEO/DIV)
 
+#define HEAP_SIZE (20 * 1024)
+
 #endif /* CONFIG_H */

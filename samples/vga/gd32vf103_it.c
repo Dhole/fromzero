@@ -7,6 +7,7 @@
 #include "video.h"
 #include "keyboard.h"
 #include "font.h"
+// #include "io.h"
 
 uint8_t volatile lines[2][SYNC + LINE_LEN];
 // uint32_t cur_line_offset = 0;
@@ -33,7 +34,7 @@ static uint16_t key_type_next = 0;
 static uint16_t key_mod = 0;
 static int y;
 
-static int i_from = 0; //, i_to = 0;
+extern void key_handler(uint16_t code);
 
 void TIMER1_IRQHandler(void)
 {
@@ -175,4 +176,16 @@ void TIMER1_IRQHandler(void)
             }
         }
     }
+    uint16_t key;
+    if (key_buf_tail != key_buf_head) {
+        // gpio_bit_reset(GPIOA, GPIO_PIN_1);
+        key = key_buf[key_buf_tail];
+        key_buf_tail = (key_buf_tail + 1) % KEY_BUF_LEN;
+        key_handler(key);
+    }
+    // int c;
+    // c = peek();
+    // if (c != 0) {
+    //     putc(c);
+    // }
 }

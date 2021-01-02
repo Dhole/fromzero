@@ -6,25 +6,40 @@
 #include "config.h"
 #include "keyboard.h"
 #include "video.h"
+#include "tinyalloc.h"
+#include "io.h"
+#include "printf.h"
 
-const int32_t pad = 0;
+extern int minilisp_main();
+
+char heap[HEAP_SIZE];
+
 volatile uint8_t h_sync[TEXT_W];
 
-int32_t cursor_x = pad;
-int32_t cursor_y = pad;
+#define READLINE_LEN 128
+uint8_t readline[READLINE_LEN];
+size_t readline_pos = 0;
 
-void putc(char c)
-{
-    text[cursor_y][cursor_x] = c;
-    cursor_x++;
-    if (cursor_x >= TEXT_W-pad) {
-        cursor_x = pad;
-        cursor_y++;
-        if (cursor_y >= TEXT_H-pad) {
-            cursor_y = pad;
-        }
-    }
-}
+// int32_t cursor_x = pad;
+// int32_t cursor_y = pad;
+
+// #define INPUT_BUF_LEN 32
+// uint16_t input_buf[INPUT_BUF_LEN];
+// uint8_t input_buf_head = 0;
+// uint8_t input_buf_tail = 0;
+// 
+// void putc(char c)
+// {
+//     text[cursor_y][cursor_x] = c;
+//     cursor_x++;
+//     if (cursor_x >= TEXT_W-pad) {
+//         cursor_x = pad;
+//         cursor_y++;
+//         if (cursor_y >= TEXT_H-pad) {
+//             cursor_y = pad;
+//         }
+//     }
+// }
 
 char hexchar(uint8_t v)
 {
@@ -95,20 +110,22 @@ char key2char(uint8_t key, bool shift)
 
 void key_handler(uint16_t code)
 {
+    char c;
+    size_t i;
     if (code & KEY_TYPE_RELEASE) {
     } else if (code & KEY_TYPE_MOVE) {
         switch (code & KEY_MASK) {
             case KEY_NP8: // UP
-                putc(1 * 16 + 8);
+                // putc(1 * 16 + 8);
                 break;
             case KEY_NP2: // DOWN
-                putc(1 * 16 + 9);
+                // putc(1 * 16 + 9);
                 break;
             case KEY_NP4: // LEFT
-                putc(1 * 16 + 11);
+                // putc(1 * 16 + 11);
                 break;
             case KEY_NP6: // RIGHT
-                putc(1 * 16 + 10);
+                // putc(1 * 16 + 10);
                 break;
 
         }
@@ -118,34 +135,53 @@ void key_handler(uint16_t code)
         } else {
             switch (code & KEY_MASK) {
             case KEY_ENTER:
-                cursor_y++;
-                cursor_x = pad;
-                if (cursor_y >= TEXT_H-pad) {
-                    cursor_y = pad;
+                // cursor_y++;
+                // cursor_x = pad;
+                // if (cursor_y >= TEXT_H-pad) {
+                //     cursor_y = pad;
+                // }
+                // input_buf[input_buf_head] = (uint16_t) '\n';
+                // input_buf_head = (input_buf_head + 1) % INPUT_BUF_LEN;
+                //c = '\n';
+                //input_push((uint16_t) c);
+                // putc(c); // echo
+                for (i = 0; i < readline_pos; i++) {
+                    input_push((uint16_t) readline[i]);
                 }
+                putc('\n');
                 break;
             case KEY_BKSP:
-                cursor_x--;
-                if (cursor_x < pad) {
-                    cursor_x = pad;
+                // cursor_x--;
+                // if (cursor_x < pad) {
+                //     cursor_x = pad;
+                // }
+                // text[cursor_y][cursor_x] = ' ';
+                if (readline_pos > 0) {
+                    readline_pos--;
+                    delc();
                 }
-                text[cursor_y][cursor_x] = ' ';
                 break;
             default:
-                putc(key2char((uint8_t) (code & KEY_MASK), code & KEY_MOD_SHIFT));
+                // putc(key2char((uint8_t) (code & KEY_MASK), code & KEY_MOD_SHIFT));
+                // input_buf[input_buf_head] = (uint16_t) key2char((uint8_t) (code & KEY_MASK), code & KEY_MOD_SHIFT);
+                // input_buf_head = (input_buf_head + 1) % INPUT_BUF_LEN;
+                c = key2char((uint8_t) (code & KEY_MASK), code & KEY_MOD_SHIFT);
+                readline[readline_pos] = c;
+                readline_pos++;
+                // input_push((uint16_t) c);
+                putc(c); // echo
                 break;
             }
         }
     }
 }
 
-void key_handler2(uint8_t code)
-{
-    putc(hexchar((code & 0xf0) >> 4));
-    putc(hexchar((code & 0x0f) >> 0));
-    putc(' ');
-}
-
+// void key_handler2(uint8_t code)
+// {
+//     putc(hexchar((code & 0xf0) >> 4));
+//     putc(hexchar((code & 0x0f) >> 0));
+//     putc(' ');
+// }
 
 void rcu_config(void)
 {
@@ -501,6 +537,7 @@ int main(void)
         }
         h_sync[i / 8] |= b << (i % 8);
     }
+    ta_init(heap, heap + HEAP_SIZE, 256, 16, 4);
     // h_sync[0] = 0x01;
     // for (i = 0; i < TEXT_W; i++) {
     //     text[0][i] = 11 * 16 + 1;
@@ -528,14 +565,14 @@ int main(void)
     // text[4][4 +11] = '!';
     // char c = 0;
     // volatile int j = 0;
-    uint16_t key;
-    while (1) {
-        if (key_buf_tail != key_buf_head) {
-            // gpio_bit_reset(GPIOA, GPIO_PIN_1);
-            key = key_buf[key_buf_tail];
-            key_buf_tail = (key_buf_tail + 1) % KEY_BUF_LEN;
-            key_handler(key);
-        }
+    // uint16_t key;
+    // while (1) {
+        // if (key_buf_tail != key_buf_head) {
+        //     // gpio_bit_reset(GPIOA, GPIO_PIN_1);
+        //     key = key_buf[key_buf_tail];
+        //     key_buf_tail = (key_buf_tail + 1) % KEY_BUF_LEN;
+        //     key_handler(key);
+        // }
         // for (j = 0; j < 0xffffff/50; j++) {
 
         // }
@@ -547,5 +584,9 @@ int main(void)
         //     gpio_bit_set(GPIOA, GPIO_PIN_2);
         // }
         // delay_1ms(1000);
-    }
+    // }
+    //
+    printf("-= MiniLisp OS =-\n");
+    minilisp_main();
+    while (1) {};
 }

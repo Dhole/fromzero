@@ -1,6 +1,8 @@
 #ifndef VIDEO_H
 #define VIDEO_H
 
+#include "config.h"
+
 #define BLANK 0
 #define TEXT_W (640/8/DIV)
 #define TEXT_H (480/8/DIV)
