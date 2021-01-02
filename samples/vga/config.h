@@ -10,6 +10,8 @@
 
 #define GREEN_PORT GPIOA
 #define GREEN_PIN GPIO_PIN_7
+#define RED_PORT GPIOA
+#define RED_PIN GPIO_PIN_9
 
 // 800x600@60Hz
 

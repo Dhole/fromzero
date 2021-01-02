@@ -156,7 +156,10 @@ void rcu_config(void)
     rcu_periph_clock_enable(RCU_DMA0);
     rcu_periph_clock_enable(RCU_DMA1);
     rcu_periph_clock_enable(RCU_SPI0);
+    rcu_periph_clock_enable(RCU_SPI1);
     rcu_periph_clock_enable(RCU_SPI2);
+    rcu_periph_clock_enable(RCU_USART0);
+    rcu_periph_clock_enable(RCU_USART1);
     rcu_periph_clock_enable(RCU_USART2);
     // rcu_periph_clock_enable(RCU_SPI1);
 }
@@ -174,6 +177,8 @@ void gpio_config(void)
     // SPI is used for generating the H_SYNC signal of VGA as master output (master mode)
     /* SPI2 GPIO config: MISO/PB5 */
     gpio_init(HSYNC_PORT, GPIO_MODE_AF_PP, GPIO_OSPEED_50MHZ, HSYNC_PIN);
+
+    gpio_init(RED_PORT, GPIO_MODE_AF_PP, GPIO_OSPEED_50MHZ, RED_PIN);
 
     // SPI1 is used to receive PS/2 data as master input (slave mode)
     /* SPI1 GPIO config:SCK/PB13, MISO/PB14, MOSI/PB15 */
@@ -225,6 +230,8 @@ void spi_config(void)
 
 void usart_config(void)
 {
+    // PS/2 input
+    {
     /* USART configure */
     usart_deinit(USART2);
     //usart_baudrate_set(USART2, 12000U);
@@ -244,6 +251,30 @@ void usart_config(void)
     usart_receive_config(USART2, USART_RECEIVE_ENABLE);
     // usart_transmit_config(USART2, USART_TRANSMIT_ENABLE);
     usart_enable(USART2);
+    }
+
+    // RED in color mode
+    {
+    /* USART configure */
+    usart_deinit(USART0);
+    //usart_baudrate_set(USART0, 12000U);
+    uint32_t uclk = 50000000 * 2;
+    uint32_t baudval = 6250000;
+    uint32_t usart_periph = USART0;
+    uint32_t udiv = (uclk+baudval/2U)/baudval;
+    uint32_t intdiv = udiv & (0x0000fff0U);
+    uint32_t fradiv = udiv & (0x0000000fU);
+    USART_BAUD(usart_periph) = ((USART_BAUD_FRADIV | USART_BAUD_INTDIV) & (intdiv | fradiv));
+    //
+    usart_word_length_set(USART0, USART_WL_8BIT);
+    usart_stop_bit_set(USART0, USART_STB_1BIT);
+    usart_parity_config(USART0, USART_PM_NONE);
+    usart_hardware_flow_rts_config(USART0, USART_RTS_DISABLE);
+    usart_hardware_flow_cts_config(USART0, USART_CTS_DISABLE);
+    // usart_receive_config(USART0, USART_RECEIVE_ENABLE);
+    usart_transmit_config(USART0, USART_TRANSMIT_ENABLE);
+    usart_enable(USART0);
+    }
 }
 
 void dma_config(void)
@@ -285,6 +316,24 @@ void dma_config(void)
     /* configure DMA mode */
     dma_circulation_disable(DMA1, DMA_CH1);
     dma_memory_to_memory_disable(DMA1, DMA_CH1);
+
+    /* USART0 transmit dma config:DMA0-DMA_CH3 */
+    dma_deinit(DMA0, DMA_CH3);
+    dma_struct_para_init(&dma_init_struct);
+
+    dma_init_struct.periph_addr  = (uint32_t)&USART_DATA(USART0);
+    dma_init_struct.memory_addr  = (uint32_t)lines[0];
+    dma_init_struct.direction    = DMA_MEMORY_TO_PERIPHERAL;
+    dma_init_struct.memory_width = DMA_MEMORY_WIDTH_8BIT;
+    dma_init_struct.periph_width = DMA_PERIPHERAL_WIDTH_8BIT;
+    dma_init_struct.priority     = DMA_PRIORITY_HIGH;
+    dma_init_struct.number       = SYNC + LINE_LEN - 8;
+    dma_init_struct.periph_inc   = DMA_PERIPH_INCREASE_DISABLE;
+    dma_init_struct.memory_inc   = DMA_MEMORY_INCREASE_ENABLE;
+    dma_init(DMA0, DMA_CH3, &dma_init_struct);
+    /* configure DMA mode */
+    dma_circulation_disable(DMA0, DMA_CH3);
+    dma_memory_to_memory_disable(DMA0, DMA_CH3);
 }
 
 /**
@@ -496,6 +545,10 @@ int main(void)
             b = 1;
         }
         h_sync[i / 8] |= b << (i % 8);
+    }
+
+    for (i = 0; i < TEXT_W; i++) {
+        red_lines[0][SYNC + i] = 0x0f;
     }
     // h_sync[0] = 0x01;
     // for (i = 0; i < TEXT_W; i++) {
