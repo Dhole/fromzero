@@ -79,7 +79,7 @@ const vector_t registers = {
 	length: 65,
 	capacity: 0,
 	elem_size: sizeof(register_alias_t),
-	elem_free_fn: NULL,
+	// elem_free_fn: NULL,
 };
 
 cmp_t

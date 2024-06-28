@@ -57,6 +57,6 @@
 ($ 'RCU_APB2EN)
     (.word 0x40021018)
 ($ 'LEDDELAY)
-    (.word 800000)
+    (.word 200000)
 ($ 'GPIOA_CONF)
     (.word 0x44444434)
