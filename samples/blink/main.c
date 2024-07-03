@@ -92,7 +92,7 @@ int main(void)
 	volatile uint32_t *GPIOA_ODR = (uint32_t *) (0x40010800 + 3*4);
 
 	int LEDDELAY = 400000;
-	volatile int i;
+	int i;
 
 loop:
 	// set
